@@ -47,6 +47,14 @@ drop trigger if exists docs_touch on public.docs;
 create trigger docs_touch before insert or update on public.docs
   for each row execute function public.touch_docs();
 
+-- Permisos de la API (hacen falta si el proyecto no expone tablas nuevas automáticamente)
+grant usage on schema public to authenticated;
+grant select on public.team to authenticated;
+grant select, insert, update, delete on public.docs to authenticated;
+grant execute on function public.is_team() to authenticated;
+revoke all on public.docs from anon;
+revoke all on public.team from anon;
+
 -- Cambios en directo para todos los que tengan la app abierta
 do $$ begin
   alter publication supabase_realtime add table public.docs;
