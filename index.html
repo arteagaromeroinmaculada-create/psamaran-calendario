@@ -210,6 +210,7 @@ img{max-width:100%}
   <div class="filters" id="filters">
     <select id="fShow" aria-label="Filtrar por espectáculo"></select>
     <span id="typeChips" style="display:contents"></span>
+    <select id="fWho" aria-label="Filtrar por persona"></select>
     <label class="toggle"><input type="checkbox" id="fPend"> Solo pendientes</label>
     <label class="toggle" id="pastWrap"><input type="checkbox" id="fPast"> Ver pasados</label>
   </div>
@@ -232,7 +233,7 @@ img{max-width:100%}
     </div>
     <div class="two">
       <label class="fld"><span>Estado</span><select id="iStatus"></select></label>
-      <label class="fld"><span>Quién</span><input id="iOwner" maxlength="60" placeholder="Inma, sala, artista…"></label>
+      <label class="fld"><span>Quién</span><select id="iOwner"></select></label>
     </div>
     <label class="fld"><span>Notas</span><textarea id="iNotes" rows="3" maxlength="2000"></textarea></label>
     <div class="who" id="iWho"></div>
@@ -275,6 +276,7 @@ img{max-width:100%}
       <label class="fld"><span>Qué son</span><select id="lType"></select></label>
       <label class="fld"><span>Espectáculo</span><select id="lShow"></select></label>
     </div>
+    <label class="fld"><span>Para quién</span><select id="lOwner"></select></label>
     <div class="two">
       <label class="fld"><span>Fecha de las hechas</span><input type="date" id="lDone"></label>
       <label class="fld"><span>Fecha de las pendientes</span><input type="date" id="lTodo"></label>
@@ -365,7 +367,7 @@ function showById(id){ return S.shows.find(s=>s.id===id); }
 
 // Funciones generadas a partir de los espectáculos
 function allEntries(){
-  const fns = S.shows.filter(s=>s.date).map(s=>({id:"fn-"+s.id, type:"funcion", title:s.name, show:s.id, date:s.date, time:s.time||"", status:"", owner:s.venue||"", isFn:true}));
+  const fns = S.shows.filter(s=>s.date).map(s=>({id:"fn-"+s.id, type:"funcion", title:s.name, show:s.id, date:s.date, time:s.time||"", status:"", owner:"", isFn:true}));
   return [...fns, ...S.items];
 }
 function filtered(){
@@ -373,6 +375,10 @@ function filtered(){
     if(S.fShow && e.show!==S.fShow) return false;
     if(!S.fTypes.has(e.type)) return false;
     if(S.fPend && (e.isFn || e.status==="hecho")) return false;
+    if(S.fWho && !e.isFn){
+      const o = ownerEmail(e.owner);
+      if(S.fWho==="__me" ? o!==String(S.uid||"").toLowerCase() : S.fWho==="__none" ? !!(o || e.owner) : o!==S.fWho) return false;
+    }
     return true;
   }).sort((a,b)=> (a.date||"9").localeCompare(b.date||"9") || (a.time||"99").localeCompare(b.time||"99") || (a.isFn?1:0)-(b.isFn?1:0));
 }
@@ -432,6 +438,8 @@ function renderFilters(){
   for(const [k,t] of all){
     chips.append(el("button",{class:"chip",type:"button","aria-pressed":String(S.fTypes.has(k)),style:`--c:var(${t.c})`,onclick:()=>{ S.fTypes.has(k)?S.fTypes.delete(k):S.fTypes.add(k); render(); }}, el("i"), t.short));
   }
+  const who = $("#fWho");
+  fillSelect(who, [["","Todas las personas"],["__me","Mis tareas"], ...(S.team||[]).filter(m=>m.email.toLowerCase()!==String(S.uid||"").toLowerCase()).map(m=>[m.email.toLowerCase(), "De " + nameOf(m.email)]), ["__none","Sin asignar"]], S.fWho||"");
   $("#fPend").checked = S.fPend; $("#fPast").checked = S.fPast;
 }
 
@@ -450,7 +458,7 @@ function rowFor(e){
         e.time ? el("span",{text:e.time}) : null,
         (!e.isFn && show) ? el("span",{text:show.name}) : null,
         (!e.isFn && e.show==="general") ? el("span",{text:"General"}) : null,
-        e.owner ? el("span",{text:(e.isFn?"":"Quién: ")+e.owner}) : null,
+        (!e.isFn && e.owner) ? el("span",{text:"Quién: "+ownerLabel(e.owner)}) : null,
         e.notes ? el("span",{text:"· notas"}) : null)),
     e.isFn ? el("span",{class:"tag-fn",text:"Función"})
       : el("button",{class:`status ${e.status}`,type:"button",style:`--sc:var(${st.c})`,disabled:!writable,title:writable?"Cambiar estado":null,"aria-label":`Estado: ${st.label}. Cambiar`,onclick:()=>cycleStatus(e)}, st.label)
@@ -568,7 +576,7 @@ async function openItem(e){
   fillSelect($("#iShow"), [["general","General (sin espectáculo)"], ...sortedShows().map(s=>[s.id,s.name])], e?.show || (S.fShow && S.fShow!=="general" ? S.fShow : "general"));
   fillSelect($("#iStatus"), Object.entries(STATUS).map(([k,s])=>[k,s.label]), e?.status || "pendiente");
   $("#iTitle").value = e?.title||""; $("#iDate").value = e?.date || S.selDay || todayIso(); $("#iTime").value = e?.time||"";
-  $("#iOwner").value = e?.owner||""; $("#iNotes").value = e?.notes||"";
+  fillOwner($("#iOwner"), e ? (e.owner||"") : (S.uid||"")); $("#iNotes").value = e?.notes||"";
   for(const id of ["iType","iTitle","iShow","iDate","iTime","iStatus","iOwner","iNotes"]) $("#"+id).disabled = !writable;
   $("#iSave").hidden = !writable; $("#iDel").hidden = !(e && writable); $("#iDel").textContent = "Borrar"; $("#iDel").dataset.confirm = "";
   $("#iErr").hidden = true; $("#iWho").textContent = "";
@@ -579,7 +587,7 @@ $("#iCancel").onclick = () => $("#dlgItem").close();
 $("#formItem").addEventListener("submit", async ev=>{
   ev.preventDefault();
   const body = { type:$("#iType").value, title:$("#iTitle").value.trim(), show:$("#iShow").value, date:$("#iDate").value, time:$("#iTime").value,
-    status:$("#iStatus").value, owner:$("#iOwner").value.trim(), notes:$("#iNotes").value.trim(), updatedBy:S.uid, updatedAt:new Date().toISOString() };
+    status:$("#iStatus").value, owner:$("#iOwner").value, notes:$("#iNotes").value.trim(), updatedBy:S.uid, updatedAt:new Date().toISOString() };
   if(!body.title || !body.date) return;
   $("#iSave").disabled = true;
   try{
@@ -746,7 +754,7 @@ $("#formReq").addEventListener("submit", async ev=>{
     for(const e of [...p.entries, ...p.follow]){
       const isFollow = !e.ask;
       const ref = await S.db.collection("items").add({ type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente",
-        owner: isFollow ? "Inma" : owner, notes: `Pedido a ${p.name} el ${fmtDay(t)}.` + (e.nodate ? " Fecha provisional: el espectáculo no tiene fecha." : ""),
+        owner: isFollow ? (S.uid||"") : "", notes: `Pedido a ${p.name} el ${fmtDay(t)}.` + (e.nodate ? " Fecha provisional: el espectáculo no tiene fecha." : ""),
         updatedBy:S.uid, updatedAt:now });
       ids.push(ref.id);
     }
@@ -779,6 +787,7 @@ function refreshList(){
 function openList(){
   fillSelect($("#lType"), Object.entries(TYPES).map(([k,t])=>[k,t.label]), "tarea");
   fillSelect($("#lShow"), [["general","General (sin espectáculo)"], ...sortedShows().map(x=>[x.id,x.name])], S.fShow && S.fShow!=="general" ? S.fShow : "general");
+  fillOwner($("#lOwner"), S.uid||"");
   $("#lDone").value = todayIso(); $("#lTodo").value = addDays(todayIso(),1);
   $("#lText").value = ""; $("#lErr").hidden = true; refreshList();
   $("#dlgList").showModal();
@@ -792,7 +801,7 @@ $("#formList").addEventListener("submit", async ev=>{
   try{
     for(const it of items){
       await S.db.collection("items").add({ type:$("#lType").value, title:it.title, show:$("#lShow").value, date: it.done ? $("#lDone").value : $("#lTodo").value,
-        time:"", status: it.done ? "hecho" : "pendiente", owner:"", notes:it.notes, updatedBy:S.uid, updatedAt:new Date().toISOString() });
+        time:"", status: it.done ? "hecho" : "pendiente", owner:$("#lOwner").value, notes:it.notes, updatedBy:S.uid, updatedAt:new Date().toISOString() });
     }
     $("#dlgList").close();
   }catch(err){ onWriteError(err, $("#lErr")); }
@@ -803,6 +812,8 @@ $("#formList").addEventListener("submit", async ev=>{
 for(const b of document.querySelectorAll(".tabs button")) b.onclick = ()=>{ S.view = b.dataset.view; try{localStorage.setItem("cal.view",S.view);}catch(e){} render(); };
 $("#fShow").onchange = e => { S.fShow = e.target.value; render(); };
 $("#fPend").onchange = e => { S.fPend = e.target.checked; render(); };
+$("#fWho").onchange = e => { S.fWho = e.target.value; try{ localStorage.setItem("cal.who", S.fWho); }catch(_){} render(); };
+try{ S.fWho = localStorage.getItem("cal.who") || ""; }catch(_){ S.fWho = ""; }
 $("#fPast").onchange = e => { S.fPast = e.target.checked; render(); };
 $("#addItem").onclick = () => openItem(null);
 $("#addReq").onclick = () => openReq(null);
@@ -811,10 +822,30 @@ $("#rShow").addEventListener("change", e=>{ R.show = showById(e.target.value); R
 $("#addShow").onclick = () => openShow({});
 
 // ---------- Equipo: quién puede entrar ----------
-S.team = null; S.teamMsg = "";
+S.team = null; S.teamMsg = ""; S.people = {};
 async function loadTeam(){
   const {data, error} = await SB.from("team").select("email,added_at").order("added_at");
   S.team = error ? [] : data; S.teamErr = !!error; render();
+}
+// Nombre visible de cada persona (colección "people", id = email)
+const nameOf = email => (S.people[email]?.name || "").trim() || String(email).split("@")[0];
+// «Quién» guarda el email; los textos antiguos («Inma») se reconocen por el nombre
+function ownerEmail(o){
+  o = String(o||"").trim(); if(!o) return "";
+  if(o.includes("@")) return o.toLowerCase();
+  const hit = (S.team||[]).find(m=>nameOf(m.email).toLowerCase()===o.toLowerCase());
+  return hit ? hit.email.toLowerCase() : "";
+}
+function ownerLabel(o){
+  const em = ownerEmail(o);
+  if(!em) return o;
+  return em===String(S.uid||"").toLowerCase() ? nameOf(em) + " (tú)" : nameOf(em);
+}
+function fillOwner(sel, val){
+  const em = ownerEmail(val);
+  const opts = [["","Sin asignar"], ...(S.team||[]).map(m=>[m.email.toLowerCase(), nameOf(m.email)])];
+  if(val && !em) opts.push([val, val+" (texto antiguo)"]);
+  fillSelect(sel, opts, em || val || "");
 }
 function renderTeam(v){
   if(S.team===null){ loadTeam(); v.append(el("div",{class:"empty"}, el("strong",{text:"Cargando el equipo…"}))); return; }
@@ -845,7 +876,10 @@ function renderTeam(v){
       await loadTeam();
     }},"Quitar acceso");
     return el("div",{class:"row",style:"--c:var(--line);grid-template-columns:1fr auto"},
-      el("div",{class:"body"}, el("div",{style:"font-weight:700;overflow-wrap:anywhere",text:m.email}), el("div",{class:"meta"}, me ? el("span",{text:"Tú"}) : (m.added_at ? el("span",{text:"Desde el "+fmtDay(m.added_at.slice(0,10))}) : null))),
+      el("div",{class:"body",style:"display:flex;flex-direction:column;gap:4px"},
+        el("input",{value:S.people[m.email]?.name||"",placeholder:"Nombre (ej. Inma)","aria-label":"Nombre de "+m.email,style:"font-weight:700;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px;max-width:260px",
+          onchange:async ev=>{ const name = ev.target.value.trim(); try{ await S.db.collection("people").doc(m.email).set({name}); }catch(err){ S.teamMsg = "No se ha podido guardar el nombre."; render(); } }}),
+        el("div",{class:"meta"}, el("span",{style:"overflow-wrap:anywhere",text:m.email}), me ? el("span",{text:"Tú"}) : (m.added_at ? el("span",{text:"Desde el "+fmtDay(m.added_at.slice(0,10))}) : null))),
       me ? el("span") : el("div",{style:"display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"},
         el("button",{class:"btn",type:"button",onclick:async()=>{
           const r = await SB.auth.resetPasswordForEmail(m.email, {redirectTo: location.origin + location.pathname});
@@ -948,6 +982,8 @@ render();
     render();
     const toList = snap => snap.docs.map(d=>({id:d.id, ...d.data()}));
     S.db.collection("shows").onSnapshot(s=>{ S.shows = toList(s); S.loaded.shows = true; render(); }, ()=>{ S.loaded.shows = true; render(); });
+    loadTeam();
+    S.db.collection("people").onSnapshot(s=>{ S.people = Object.fromEntries(s.docs.map(d=>[d.id, d.data()])); render(); }, ()=>{});
     S.db.collection("requests").onSnapshot(s=>{ S.requests = toList(s); render(); }, ()=>{});
     S.db.collection("items").onSnapshot(s=>{ S.items = toList(s); S.loaded.items = true; render(); }, ()=>{ S.loaded.items = true; render(); });
   };
