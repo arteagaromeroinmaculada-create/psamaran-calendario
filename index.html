@@ -869,6 +869,8 @@ render();
 (async ()=>{
   const cfg = window.CONFIG || {};
   if(!window.supabase || !cfg.SUPABASE_URL || /TU-PROYECTO/.test(cfg.SUPABASE_URL)){ S.configMissing = true; render(); return; }
+  // El enlace de «elegir contraseña» llega con type=recovery: lo leemos antes de que la librería limpie la dirección
+  const fromRecovery = /type=recovery/.test(location.hash + location.search);
   SB = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
   let started = false;
   const start = session => {
@@ -884,9 +886,10 @@ render();
     S.db.collection("requests").onSnapshot(s=>{ S.requests = toList(s); render(); }, ()=>{});
     S.db.collection("items").onSnapshot(s=>{ S.items = toList(s); S.loaded.items = true; render(); }, ()=>{ S.loaded.items = true; render(); });
   };
+  if(fromRecovery){ S.recovery = true; }
+  SB.auth.onAuthStateChange((e, s)=>{ if(e==="PASSWORD_RECOVERY"){ S.recovery = true; render(); } start(s); });
   const {data:{session}} = await SB.auth.getSession();
   start(session);
-  SB.auth.onAuthStateChange((e, s)=>{ if(e==="PASSWORD_RECOVERY"){ S.recovery = true; render(); } start(s); });
 })();
 </script>
 
