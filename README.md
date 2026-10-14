@@ -27,10 +27,14 @@ En Supabase, **Authentication > URL Configuration**:
 
 ## Día a día
 
-- **Primera vez**: en la pantalla de entrada, «Es mi primera vez». Se elige contraseña y llega un único correo de confirmación.
-- **Contraseña olvidada**: «He olvidado mi contraseña».
+- **Dar acceso**: pestaña **Equipo**, escribir el email y «Dar acceso». A esa persona le llega un correo para elegir su contraseña («Reenviar correo» si no le llega).
+- **Quitar acceso**: «Quitar acceso» en la misma pestaña.
+- **Contraseña olvidada**: «He olvidado mi contraseña» en la pantalla de entrada. Dentro de la app, «Cambiar contraseña».
 
-- **Dar o quitar acceso**: pestaña **Equipo** de la app. (También se puede editar la tabla `team` en Supabase.)
+### Ajustes necesarios en Supabase
+- **Authentication > Sign In / Providers > Email**: desactivar **Confirm email** (el correo que vale es el de elegir contraseña).
+- **Authentication > Emails > SMTP Settings**: correo propio (por ejemplo Gmail con contraseña de aplicación: `smtp.gmail.com`, puerto 587). Sin esto Supabase solo envía unos 2 correos por hora.
+- **Authentication > Rate Limits**: subir los correos por hora (por ejemplo a 30).
 
 ## Estructura de datos
 

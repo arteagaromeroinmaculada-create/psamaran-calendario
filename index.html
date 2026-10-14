@@ -759,8 +759,16 @@ function renderTeam(v){
     ev.preventDefault();
     const email = input.value.trim().toLowerCase(); if(!email) return;
     const {error} = await SB.from("team").insert({email});
-    S.teamMsg = error ? (error.code==="23505" ? "Ese email ya tiene acceso." : "No se ha podido añadir. Si el problema sigue, avisa a Inma.")
-      : `Listo. Pásale a ${email} esta dirección: ${location.origin}. Entra escribiendo su email y abriendo el enlace que le llega.`;
+    if(error && error.code!=="23505"){ S.teamMsg = "No se ha podido añadir. Vuelve a intentarlo."; return loadTeam(); }
+    // Crea la cuenta (sin cerrar tu sesión) y le manda el correo para elegir contraseña
+    const tmp = window.supabase.createClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_ANON_KEY, {auth:{persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"tmp-alta"}});
+    const rnd = Array.from(crypto.getRandomValues(new Uint8Array(18)), b=>b.toString(16).padStart(2,"0")).join("");
+    await tmp.auth.signUp({email, password:rnd});
+    const r = await SB.auth.resetPasswordForEmail(email, {redirectTo: location.origin + location.pathname});
+    const rate = r.error && (r.error.status===429 || /rate limit|security purposes/i.test(r.error.message||""));
+    S.teamMsg = !r.error ? `Listo. A ${email} le llegará un correo para elegir su contraseña. Después entra en ${location.origin} con su email y esa contraseña.`
+      : rate ? `${email} ya tiene acceso, pero el correo no ha salido porque se han enviado demasiados seguidos. Vuelve a pulsar «Reenviar correo» en unos minutos.`
+      : `${email} ya tiene acceso, pero el correo no ha salido (${r.error.message}).`;
     await loadTeam();
   });
   const list = el("div",{class:"list"}, (S.team||[]).map(m=>{
@@ -773,10 +781,14 @@ function renderTeam(v){
     }},"Quitar acceso");
     return el("div",{class:"row",style:"--c:var(--line);grid-template-columns:1fr auto"},
       el("div",{class:"body"}, el("div",{style:"font-weight:700;overflow-wrap:anywhere",text:m.email}), el("div",{class:"meta"}, me ? el("span",{text:"Tú"}) : (m.added_at ? el("span",{text:"Desde el "+fmtDay(m.added_at.slice(0,10))}) : null))),
-      me ? el("span") : del);
+      me ? el("span") : el("div",{style:"display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"},
+        el("button",{class:"btn",type:"button",onclick:async()=>{
+          const r = await SB.auth.resetPasswordForEmail(m.email, {redirectTo: location.origin + location.pathname});
+          S.teamMsg = r.error ? "El correo no ha salido. Prueba en unos minutos." : `Correo reenviado a ${m.email}.`; render();
+        }},"Reenviar correo"), del));
   }));
   v.append(
-    el("p",{style:"margin:0 0 12px;color:var(--muted);max-width:60ch",text:"Las personas de esta lista pueden entrar en el calendario y cambiarlo. Entran con su email, sin contraseña."}),
+    el("p",{style:"margin:0 0 12px;color:var(--muted);max-width:60ch",text:"Las personas de esta lista pueden entrar en el calendario y cambiarlo. Al darle acceso a alguien, le llega un correo para elegir su contraseña."}),
     form,
     S.teamMsg ? el("div",{class:"notice",text:S.teamMsg}) : null,
     S.teamErr ? el("div",{class:"notice",text:"No se ha podido cargar la lista. Hay que actualizar la base de datos (ver supabase/equipo.sql)."}) : list);
@@ -795,13 +807,14 @@ function loginForm(){
   if(pass && m!=="entrar") pass.minLength = 8;
   const btn = el("button",{class:"btn primary"}, {entrar:"Entrar", crear:"Crear mi contraseña", olvido:"Enviarme el enlace", nueva:"Guardar contraseña"}[m]);
   const title = {entrar:"Entrar", crear:"Primera vez", olvido:"Recuperar contraseña", nueva:"Nueva contraseña"}[m];
-  const help = {entrar:"Entra con tu email y tu contraseña.", crear:"Elige una contraseña. Te mandaremos un email para confirmar que es tuyo, solo esta vez.", olvido:"Te mandamos un enlace para poner una contraseña nueva.", nueva:"Escribe la contraseña que quieres usar a partir de ahora."}[m];
+  const help = {entrar:"Entra con tu email y tu contraseña.", crear:"Elige la contraseña con la que vas a entrar.", olvido:"Te mandamos un enlace para poner una contraseña nueva.", nueva:"Escribe la contraseña con la que vas a entrar a partir de ahora (mínimo 8 caracteres)."}[m];
   const form = el("form",{class:"login"}, el("h2",{text:title}), el("p",{text:help}), email, pass, btn, msg,
-    m==="entrar" ? el("div",{style:"display:flex;flex-direction:column;gap:6px;font-size:14px"}, link("Es mi primera vez", "crear"), link("He olvidado mi contraseña", "olvido")) :
-    m!=="nueva" ? link("Volver a entrar", "entrar") : null);
+    m==="entrar" ? el("div",{style:"display:flex;flex-direction:column;gap:6px;font-size:14px"}, link("He olvidado mi contraseña", "olvido")) :
+    m!=="nueva" ? link("Volver a entrar", "entrar") : (S.db ? el("button",{type:"button",style:"border:0;background:none;padding:0;color:var(--accent);text-decoration:underline;text-align:left",onclick:()=>{ S.recovery = false; loginMode = "entrar"; render(); }},"Cancelar") : null));
   const explain = error => {
     const t = error.message || "";
     if(error.status===429 || /rate limit|security purposes/i.test(t)) return "Se han pedido demasiados correos seguidos. Espera unos minutos y vuelve a intentarlo.";
+    if(/ya tiene cuenta/.test(t)) return t;
     if(/invalid login credentials/i.test(t)) return "El email o la contraseña no son correctos.";
     if(/email not confirmed/i.test(t)) return "Aún no has confirmado tu email. Abre el correo que te mandamos al crear la contraseña.";
     if(/password/i.test(t) && /(short|least|weak)/i.test(t)) return "La contraseña es demasiado corta o sencilla. Usa al menos 8 caracteres.";
@@ -812,7 +825,7 @@ function loginForm(){
     const back = location.origin + location.pathname;
     let error, okText = "";
     if(m==="entrar") ({error} = await SB.auth.signInWithPassword({email:email.value.trim(), password:pass.value}));
-    else if(m==="crear"){ ({error} = await SB.auth.signUp({email:email.value.trim(), password:pass.value, options:{emailRedirectTo:back}})); okText = `Te hemos mandado un correo a ${email.value.trim()}. Ábrelo para confirmar y ya podrás entrar con tu contraseña.`; }
+    else if(m==="crear"){ ({error} = await SB.auth.signUp({email:email.value.trim(), password:pass.value, options:{emailRedirectTo:back}})); okText = /already|registered/i.test(error?.message||"") ? "" : "Cuenta creada. Si no entras solo, vuelve a «Entrar»."; if(error && /already|registered/i.test(error.message||"")){ error = {message:"Ese email ya tiene cuenta. Entra con tu contraseña o usa «He olvidado mi contraseña»."}; } }
     else if(m==="olvido"){ ({error} = await SB.auth.resetPasswordForEmail(email.value.trim(), {redirectTo:back})); okText = `Si ${email.value.trim()} tiene cuenta, te llegará un enlace para poner una contraseña nueva.`; }
     else { ({error} = await SB.auth.updateUser({password:pass.value})); if(!error){ loginMode = "entrar"; S.recovery = false; render(); return; } }
     btn.disabled = false;
@@ -864,7 +877,7 @@ render();
     const email = session.user.email;
     S.db = makeDb(SB); S.uid = email; S.canWrite = null;
     S.user = { profiles: async ids => Object.fromEntries([].concat(ids).map(i=>[i,{name:i}])) };
-    const box = $("#me"); box.replaceChildren(el("span",{text:email}), el("button",{type:"button",onclick:async()=>{ await SB.auth.signOut(); location.reload(); }},"Salir")); box.hidden = false;
+    const box = $("#me"); box.replaceChildren(el("span",{text:email}), el("button",{type:"button",onclick:()=>{ S.recovery = true; render(); }},"Cambiar contraseña"), el("button",{type:"button",onclick:async()=>{ await SB.auth.signOut(); location.reload(); }},"Salir")); box.hidden = false;
     render();
     const toList = snap => snap.docs.map(d=>({id:d.id, ...d.data()}));
     S.db.collection("shows").onSnapshot(s=>{ S.shows = toList(s); S.loaded.shows = true; render(); }, ()=>{ S.loaded.shows = true; render(); });
