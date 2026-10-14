@@ -371,6 +371,7 @@ function render(){
   const v = $("#view"); v.replaceChildren();
   for(const n of document.querySelectorAll("[data-auth]")) n.hidden = !S.db;
   if(S.configMissing){ v.append(el("div",{class:"empty"}, el("strong",{text:"Falta configurar Supabase"}), "Rellena config.js con la URL y la clave pública de tu proyecto de Supabase.")); return; }
+  if(S.recovery){ loginMode = "nueva"; v.append(loginForm()); return; }
   if(!S.db){ v.append(loginForm()); return; }
   if(!S.loaded.shows || !S.loaded.items){ v.append(el("div",{class:"empty"}, el("strong",{text:"Cargando el calendario…"}))); return; }
   if(S.view==="agenda") renderAgenda(v);
@@ -783,23 +784,40 @@ function renderTeam(v){
 
 // ---------- Login (Supabase, enlace mágico por email) ----------
 let SB = null;
+let loginMode = "entrar"; // entrar | crear | olvido | nueva
 function loginForm(){
+  const field = (type, id, ph, ac) => el("input",{type,id,required:true,placeholder:ph,autocomplete:ac,style:"border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:10px 12px;width:100%"});
+  const link = (txt, mode) => el("button",{type:"button",style:"border:0;background:none;padding:0;color:var(--accent);text-decoration:underline;text-align:left",onclick:()=>{ loginMode = mode; render(); }}, txt);
   const msg = el("p",{});
-  const input = el("input",{type:"email",id:"loginEmail",required:true,placeholder:"tu@email.com",autocomplete:"email",class:"",style:"border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:10px 12px;width:100%"});
-  const btn = el("button",{class:"btn primary"},"Enviarme el enlace");
-  const form = el("form",{class:"login"},
-    el("h2",{text:"Entrar"}),
-    el("p",{text:"Escribe tu email y te mandamos un enlace para entrar. Sin contraseñas."}),
-    input, btn, msg);
+  const m = loginMode;
+  const email = m==="nueva" ? null : field("email","loginEmail","Email","email");
+  const pass = m==="olvido" ? null : field("password","loginPass", m==="entrar" ? "Contraseña" : "Contraseña nueva (mínimo 8 caracteres)", m==="entrar" ? "current-password" : "new-password");
+  if(pass && m!=="entrar") pass.minLength = 8;
+  const btn = el("button",{class:"btn primary"}, {entrar:"Entrar", crear:"Crear mi contraseña", olvido:"Enviarme el enlace", nueva:"Guardar contraseña"}[m]);
+  const title = {entrar:"Entrar", crear:"Primera vez", olvido:"Recuperar contraseña", nueva:"Nueva contraseña"}[m];
+  const help = {entrar:"Entra con tu email y tu contraseña.", crear:"Elige una contraseña. Te mandaremos un email para confirmar que es tuyo, solo esta vez.", olvido:"Te mandamos un enlace para poner una contraseña nueva.", nueva:"Escribe la contraseña que quieres usar a partir de ahora."}[m];
+  const form = el("form",{class:"login"}, el("h2",{text:title}), el("p",{text:help}), email, pass, btn, msg,
+    m==="entrar" ? el("div",{style:"display:flex;flex-direction:column;gap:6px;font-size:14px"}, link("Es mi primera vez", "crear"), link("He olvidado mi contraseña", "olvido")) :
+    m!=="nueva" ? link("Volver a entrar", "entrar") : null);
+  const explain = error => {
+    const t = error.message || "";
+    if(error.status===429 || /rate limit|security purposes/i.test(t)) return "Se han pedido demasiados correos seguidos. Espera unos minutos y vuelve a intentarlo.";
+    if(/invalid login credentials/i.test(t)) return "El email o la contraseña no son correctos.";
+    if(/email not confirmed/i.test(t)) return "Aún no has confirmado tu email. Abre el correo que te mandamos al crear la contraseña.";
+    if(/password/i.test(t) && /(short|least|weak)/i.test(t)) return "La contraseña es demasiado corta o sencilla. Usa al menos 8 caracteres.";
+    return `No ha funcionado (${t || "error desconocido"}).`;
+  };
   form.addEventListener("submit", async ev=>{
-    ev.preventDefault(); btn.disabled = true; msg.textContent = "Enviando…";
-    const {error} = await SB.auth.signInWithOtp({ email: input.value.trim(), options:{ emailRedirectTo: location.origin + location.pathname } });
+    ev.preventDefault(); btn.disabled = true; msg.textContent = "Un momento…";
+    const back = location.origin + location.pathname;
+    let error, okText = "";
+    if(m==="entrar") ({error} = await SB.auth.signInWithPassword({email:email.value.trim(), password:pass.value}));
+    else if(m==="crear"){ ({error} = await SB.auth.signUp({email:email.value.trim(), password:pass.value, options:{emailRedirectTo:back}})); okText = `Te hemos mandado un correo a ${email.value.trim()}. Ábrelo para confirmar y ya podrás entrar con tu contraseña.`; }
+    else if(m==="olvido"){ ({error} = await SB.auth.resetPasswordForEmail(email.value.trim(), {redirectTo:back})); okText = `Si ${email.value.trim()} tiene cuenta, te llegará un enlace para poner una contraseña nueva.`; }
+    else { ({error} = await SB.auth.updateUser({password:pass.value})); if(!error){ loginMode = "entrar"; S.recovery = false; render(); return; } }
     btn.disabled = false;
-    if(error) console.warn("Login:", error);
-    const rate = error && (error.status===429 || /rate limit|seconds|security purposes/i.test(error.message||""));
-    msg.textContent = !error ? `Te hemos enviado un enlace a ${input.value.trim()}. Ábrelo en este mismo dispositivo.`
-      : rate ? "Se han pedido demasiados enlaces seguidos. Espera unos minutos y vuelve a intentarlo."
-      : `No se ha podido enviar el enlace (${error.message || "error desconocido"}). Revisa el email y vuelve a intentarlo.`;
+    if(error){ console.warn("Login:", error); msg.textContent = explain(error); }
+    else msg.textContent = okText;
   });
   return form;
 }
@@ -855,7 +873,7 @@ render();
   };
   const {data:{session}} = await SB.auth.getSession();
   start(session);
-  SB.auth.onAuthStateChange((_e, s)=>start(s));
+  SB.auth.onAuthStateChange((e, s)=>{ if(e==="PASSWORD_RECOVERY"){ S.recovery = true; render(); } start(s); });
 })();
 </script>
 

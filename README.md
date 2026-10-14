@@ -3,7 +3,7 @@
 Calendario compartido de funciones, publicaciones de artistas, campañas y material de PSamarán y Sala Tabor.
 
 - **Web estática** (`index.html`), sin compilación. Se publica tal cual en Vercel.
-- **Supabase** para el login por enlace de email y para guardar los datos.
+- **Supabase** para el login con email y contraseña y para guardar los datos.
 - Solo entra quien esté en la tabla `team` de Supabase.
 
 ## Puesta en marcha (una sola vez)
@@ -26,6 +26,9 @@ En Supabase, **Authentication > URL Configuration**:
 - **Redirect URLs**: añade la misma dirección.
 
 ## Día a día
+
+- **Primera vez**: en la pantalla de entrada, «Es mi primera vez». Se elige contraseña y llega un único correo de confirmación.
+- **Contraseña olvidada**: «He olvidado mi contraseña».
 
 - **Dar o quitar acceso**: pestaña **Equipo** de la app. (También se puede editar la tabla `team` en Supabase.)
 
