@@ -197,6 +197,7 @@ img{max-width:100%}
       <button role="tab" id="tab-agenda" aria-selected="true" data-view="agenda">Agenda</button>
       <button role="tab" id="tab-mes" aria-selected="false" data-view="mes">Mes</button>
       <button role="tab" id="tab-shows" aria-selected="false" data-view="shows">Espectáculos</button>
+      <button role="tab" id="tab-equipo" aria-selected="false" data-view="equipo">Equipo</button>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" id="addShow" hidden>+ Espectáculo</button>
@@ -364,7 +365,7 @@ function render(){
   $("#addItem").hidden = !writable;
   $("#addReq").hidden = !writable || !S.shows.length;
   $("#addShow").hidden = !writable || S.view!=="shows";
-  $("#filters").hidden = S.view==="shows" || !S.db;
+  $("#filters").hidden = S.view==="shows" || S.view==="equipo" || !S.db;
   $("#pastWrap").hidden = S.view!=="agenda";
   renderFilters(); renderSummary(); renderNotice();
   const v = $("#view"); v.replaceChildren();
@@ -374,6 +375,7 @@ function render(){
   if(!S.loaded.shows || !S.loaded.items){ v.append(el("div",{class:"empty"}, el("strong",{text:"Cargando el calendario…"}))); return; }
   if(S.view==="agenda") renderAgenda(v);
   else if(S.view==="mes") renderMonth(v);
+  else if(S.view==="equipo") renderTeam(v);
   else renderShows(v);
 }
 
@@ -741,6 +743,43 @@ $("#addItem").onclick = () => openItem(null);
 $("#addReq").onclick = () => openReq(null);
 $("#rShow").addEventListener("change", e=>{ R.show = showById(e.target.value); R.edited = false; refreshReq(); });
 $("#addShow").onclick = () => openShow({});
+
+// ---------- Equipo: quién puede entrar ----------
+S.team = null; S.teamMsg = "";
+async function loadTeam(){
+  const {data, error} = await SB.from("team").select("email,added_at").order("added_at");
+  S.team = error ? [] : data; S.teamErr = !!error; render();
+}
+function renderTeam(v){
+  if(S.team===null){ loadTeam(); v.append(el("div",{class:"empty"}, el("strong",{text:"Cargando el equipo…"}))); return; }
+  const input = el("input",{type:"email",id:"teamEmail",required:true,placeholder:"Email",autocomplete:"off",style:"flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:9px 12px"});
+  const form = el("form",{style:"display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"}, input, el("button",{class:"btn primary"},"Dar acceso"));
+  form.addEventListener("submit", async ev=>{
+    ev.preventDefault();
+    const email = input.value.trim().toLowerCase(); if(!email) return;
+    const {error} = await SB.from("team").insert({email});
+    S.teamMsg = error ? (error.code==="23505" ? "Ese email ya tiene acceso." : "No se ha podido añadir. Si el problema sigue, avisa a Inma.")
+      : `Listo. Pásale a ${email} esta dirección: ${location.origin}. Entra escribiendo su email y abriendo el enlace que le llega.`;
+    await loadTeam();
+  });
+  const list = el("div",{class:"list"}, (S.team||[]).map(m=>{
+    const me = m.email.toLowerCase()===String(S.uid||"").toLowerCase();
+    const del = el("button",{class:"btn danger",type:"button",onclick:async()=>{
+      if(!del.dataset.confirm){ del.dataset.confirm="1"; del.textContent="¿Quitar? Pulsa otra vez"; return; }
+      const {error} = await SB.from("team").delete().eq("email", m.email);
+      S.teamMsg = error ? "No se ha podido quitar." : `${m.email} ya no tiene acceso.`;
+      await loadTeam();
+    }},"Quitar acceso");
+    return el("div",{class:"row",style:"--c:var(--line);grid-template-columns:1fr auto"},
+      el("div",{class:"body"}, el("div",{style:"font-weight:700;overflow-wrap:anywhere",text:m.email}), el("div",{class:"meta"}, me ? el("span",{text:"Tú"}) : (m.added_at ? el("span",{text:"Desde el "+fmtDay(m.added_at.slice(0,10))}) : null))),
+      me ? el("span") : del);
+  }));
+  v.append(
+    el("p",{style:"margin:0 0 12px;color:var(--muted);max-width:60ch",text:"Las personas de esta lista pueden entrar en el calendario y cambiarlo. Entran con su email, sin contraseña."}),
+    form,
+    S.teamMsg ? el("div",{class:"notice",text:S.teamMsg}) : null,
+    S.teamErr ? el("div",{class:"notice",text:"No se ha podido cargar la lista. Hay que actualizar la base de datos (ver supabase/equipo.sql)."}) : list);
+}
 
 // ---------- Login (Supabase, enlace mágico por email) ----------
 let SB = null;

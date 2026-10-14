@@ -27,8 +27,7 @@ En Supabase, **Authentication > URL Configuration**:
 
 ## Día a día
 
-- **Dar acceso a alguien**: añade su email en la tabla `team` de Supabase. Entra escribiendo su email en la app y abriendo el enlace que le llega.
-- **Quitar acceso**: borra su fila de `team`.
+- **Dar o quitar acceso**: pestaña **Equipo** de la app. (También se puede editar la tabla `team` en Supabase.)
 
 ## Estructura de datos
 

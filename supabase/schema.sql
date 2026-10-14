@@ -7,9 +7,6 @@ create table if not exists public.team (
   added_at timestamptz not null default now()
 );
 alter table public.team enable row level security;
-drop policy if exists "el equipo se ve a sí mismo" on public.team;
-create policy "el equipo se ve a sí mismo" on public.team
-  for select to authenticated using (lower(email) = lower(auth.jwt() ->> 'email'));
 
 create or replace function public.is_team() returns boolean
 language sql stable security definer set search_path = public as $$
@@ -49,11 +46,18 @@ create trigger docs_touch before insert or update on public.docs
 
 -- Permisos de la API (hacen falta si el proyecto no expone tablas nuevas automáticamente)
 grant usage on schema public to authenticated;
-grant select on public.team to authenticated;
+grant select, insert, delete on public.team to authenticated;
 grant select, insert, update, delete on public.docs to authenticated;
 grant execute on function public.is_team() to authenticated;
 revoke all on public.docs from anon;
 revoke all on public.team from anon;
+
+drop policy if exists "equipo ve equipo" on public.team;
+drop policy if exists "equipo añade" on public.team;
+drop policy if exists "equipo quita" on public.team;
+create policy "equipo ve equipo" on public.team for select to authenticated using (public.is_team());
+create policy "equipo añade"     on public.team for insert to authenticated with check (public.is_team());
+create policy "equipo quita"     on public.team for delete to authenticated using (public.is_team());
 
 -- Cambios en directo para todos los que tengan la app abierta
 do $$ begin
