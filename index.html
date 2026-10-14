@@ -795,7 +795,11 @@ function loginForm(){
     ev.preventDefault(); btn.disabled = true; msg.textContent = "Enviando…";
     const {error} = await SB.auth.signInWithOtp({ email: input.value.trim(), options:{ emailRedirectTo: location.origin + location.pathname } });
     btn.disabled = false;
-    msg.textContent = error ? "No se ha podido enviar el enlace. Revisa el email y vuelve a intentarlo." : `Te hemos enviado un enlace a ${input.value.trim()}. Ábrelo en este mismo dispositivo.`;
+    if(error) console.warn("Login:", error);
+    const rate = error && (error.status===429 || /rate limit|seconds|security purposes/i.test(error.message||""));
+    msg.textContent = !error ? `Te hemos enviado un enlace a ${input.value.trim()}. Ábrelo en este mismo dispositivo.`
+      : rate ? "Se han pedido demasiados enlaces seguidos. Espera unos minutos y vuelve a intentarlo."
+      : `No se ha podido enviar el enlace (${error.message || "error desconocido"}). Revisa el email y vuelve a intentarlo.`;
   });
   return form;
 }
