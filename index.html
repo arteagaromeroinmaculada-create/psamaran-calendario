@@ -201,6 +201,7 @@ img{max-width:100%}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" id="addShow" hidden>+ Espectáculo</button>
+      <button class="btn" id="addList" hidden>Pegar lista</button>
       <button class="btn" id="addReq" hidden>Pedir al artista</button>
       <button class="btn primary" id="addItem" hidden>+ Añadir</button>
     </div>
@@ -262,6 +263,25 @@ img{max-width:100%}
       <div><button type="button" class="btn danger" id="sDel" hidden>Borrar</button></div>
       <div class="r"><button type="button" class="btn" id="sCancel">Cancelar</button><button class="btn primary">Guardar</button></div>
     </div>
+  </form>
+</dialog>
+
+<dialog id="dlgList">
+  <form id="formList" method="dialog">
+    <h2>Pegar lista</h2>
+    <p style="margin:0;color:var(--muted);font-size:14px">Una tarea por línea. Si una línea acaba en «hecho» (o «creada», «listo»…), se marca como hecha. Los enlaces van a las notas.</p>
+    <label class="fld"><span>Lista</span><textarea id="lText" rows="8" placeholder="Crear cuenta de Instagram - hecho&#10;Pedir acceso a la página de Facebook"></textarea></label>
+    <div class="two">
+      <label class="fld"><span>Qué son</span><select id="lType"></select></label>
+      <label class="fld"><span>Espectáculo</span><select id="lShow"></select></label>
+    </div>
+    <div class="two">
+      <label class="fld"><span>Fecha de las hechas</span><input type="date" id="lDone"></label>
+      <label class="fld"><span>Fecha de las pendientes</span><input type="date" id="lTodo"></label>
+    </div>
+    <div class="plan" id="lPlan"></div>
+    <div class="err" id="lErr" hidden></div>
+    <div class="dlgacts"><div></div><div class="r"><button type="button" class="btn" id="lCancel">Cancelar</button><button class="btn primary" id="lSave">Crear tareas</button></div></div>
   </form>
 </dialog>
 
@@ -364,6 +384,7 @@ function render(){
   const writable = S.db && S.canWrite!==false && !S.readOnly;
   $("#addItem").hidden = !writable;
   $("#addReq").hidden = !writable || !S.shows.length;
+  $("#addList").hidden = !writable;
   $("#addShow").hidden = !writable || S.view!=="shows";
   $("#filters").hidden = S.view==="shows" || S.view==="equipo" || !S.db;
   $("#pastWrap").hidden = S.view!=="agenda";
@@ -735,6 +756,49 @@ $("#formReq").addEventListener("submit", async ev=>{
   finally{ $("#rSave").disabled = false; }
 });
 
+// ---------- Pegar lista ----------
+const DONE_RE = /\s*[-–—:,]?\s*\b(hecho|hecha|hechos|hechas|creado|creada|creados|creadas|listo|lista|ok|terminado|terminada|done)\b\.?\s*$/i;
+function parseList(){
+  return $("#lText").value.split(/\n/).map(l=>l.replace(/^\s*([-*•]|\d+[.)])\s+/,"").trim()).filter(Boolean).map(l=>{
+    const urls = l.match(/https?:\/\/\S+/g) || [];
+    let t = l.replace(/https?:\/\/\S+/g," ").replace(/\s{2,}/g," ").trim();
+    const done = DONE_RE.test(t);
+    t = t.replace(DONE_RE,"").replace(/[\s\-–—:,]+$/,"").trim();
+    t = t.charAt(0).toUpperCase() + t.slice(1);
+    return {title:t || urls[0] || l, done, notes:urls.join("\n")};
+  });
+}
+function refreshList(){
+  const items = parseList(), plan = $("#lPlan"); plan.replaceChildren();
+  if(items.length){
+    plan.append(el("b",{text:`Se crearán ${items.length} tareas:`}));
+    for(const it of items) plan.append(el("span",{text:`${it.done?"✓ Hecha":"○ Pendiente"} · ${fmtDay(it.done?$("#lDone").value:$("#lTodo").value)} · ${it.title}`}));
+  }
+  $("#lSave").disabled = !items.length;
+}
+function openList(){
+  fillSelect($("#lType"), Object.entries(TYPES).map(([k,t])=>[k,t.label]), "tarea");
+  fillSelect($("#lShow"), [["general","General (sin espectáculo)"], ...sortedShows().map(x=>[x.id,x.name])], S.fShow && S.fShow!=="general" ? S.fShow : "general");
+  $("#lDone").value = todayIso(); $("#lTodo").value = addDays(todayIso(),1);
+  $("#lText").value = ""; $("#lErr").hidden = true; refreshList();
+  $("#dlgList").showModal();
+}
+for(const id of ["lText","lDone","lTodo"]) $("#"+id).addEventListener("input", refreshList);
+$("#lCancel").onclick = () => $("#dlgList").close();
+$("#formList").addEventListener("submit", async ev=>{
+  ev.preventDefault();
+  const items = parseList(); if(!items.length) return;
+  $("#lSave").disabled = true;
+  try{
+    for(const it of items){
+      await S.db.collection("items").add({ type:$("#lType").value, title:it.title, show:$("#lShow").value, date: it.done ? $("#lDone").value : $("#lTodo").value,
+        time:"", status: it.done ? "hecho" : "pendiente", owner:"", notes:it.notes, updatedBy:S.uid, updatedAt:new Date().toISOString() });
+    }
+    $("#dlgList").close();
+  }catch(err){ onWriteError(err, $("#lErr")); }
+  finally{ $("#lSave").disabled = false; }
+});
+
 // ---------- Controles ----------
 for(const b of document.querySelectorAll(".tabs button")) b.onclick = ()=>{ S.view = b.dataset.view; try{localStorage.setItem("cal.view",S.view);}catch(e){} render(); };
 $("#fShow").onchange = e => { S.fShow = e.target.value; render(); };
@@ -742,6 +806,7 @@ $("#fPend").onchange = e => { S.fPend = e.target.checked; render(); };
 $("#fPast").onchange = e => { S.fPast = e.target.checked; render(); };
 $("#addItem").onclick = () => openItem(null);
 $("#addReq").onclick = () => openReq(null);
+$("#addList").onclick = () => openList();
 $("#rShow").addEventListener("change", e=>{ R.show = showById(e.target.value); R.edited = false; refreshReq(); });
 $("#addShow").onclick = () => openShow({});
 
