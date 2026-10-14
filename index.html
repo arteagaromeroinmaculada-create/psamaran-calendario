@@ -200,6 +200,7 @@ img{max-width:100%}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" id="addShow" hidden>+ Espectáculo</button>
+      <button class="btn" id="addReq" hidden>Pedir al artista</button>
       <button class="btn primary" id="addItem" hidden>+ Añadir</button>
     </div>
   </div>
@@ -266,6 +267,7 @@ img{max-width:100%}
 <dialog id="dlgReq">
   <form id="formReq" method="dialog">
     <h2 id="rTitle">Pedir al artista</h2>
+    <label class="fld"><span>Espectáculo</span><select id="rShow"></select></label>
     <div class="reqgrid">
       <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
         <div class="two">
@@ -360,6 +362,7 @@ function render(){
   for(const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.view===S.view));
   const writable = S.db && S.canWrite!==false && !S.readOnly;
   $("#addItem").hidden = !writable;
+  $("#addReq").hidden = !writable || !S.shows.length;
   $("#addShow").hidden = !writable || S.view!=="shows";
   $("#filters").hidden = S.view==="shows" || !S.db;
   $("#pastWrap").hidden = S.view!=="agenda";
@@ -680,8 +683,14 @@ function refreshReq(){
 }
 
 function openReq(s){
+  if(!s){
+    const t = todayIso();
+    s = showById(S.fShow) || sortedShows().find(x=>x.date && x.date>=t) || sortedShows()[0];
+    if(!s) return;
+  }
   R = {show:s, role:"artista", picked:new Set(), edited:false};
-  $("#rTitle").textContent = `Pedir · ${s.name}`;
+  $("#rTitle").textContent = "Pedir al artista";
+  fillSelect($("#rShow"), sortedShows().map(x=>[x.id, x.name + (x.date ? " · " + fmtDay(x.date) : "")]), s.id);
   $("#rRole").value = "artista"; $("#rName").value = ""; $("#rPhone").value = ""; $("#rLink").value = "";
   $("#rMsg").value = ""; $("#rErr").hidden = true; $("#rCopied").hidden = true;
   const box = $("#rAsks"); box.replaceChildren(); let g = "";
@@ -729,6 +738,8 @@ $("#fShow").onchange = e => { S.fShow = e.target.value; render(); };
 $("#fPend").onchange = e => { S.fPend = e.target.checked; render(); };
 $("#fPast").onchange = e => { S.fPast = e.target.checked; render(); };
 $("#addItem").onclick = () => openItem(null);
+$("#addReq").onclick = () => openReq(null);
+$("#rShow").addEventListener("change", e=>{ R.show = showById(e.target.value); R.edited = false; refreshReq(); });
 $("#addShow").onclick = () => openShow({});
 
 // ---------- Login (Supabase, enlace mágico por email) ----------
