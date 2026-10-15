@@ -12,8 +12,9 @@ Calendario compartido de funciones, publicaciones de artistas, campañas y mater
 1. En supabase.com, crea un proyecto nuevo (región: Europa).
 2. Ve a **SQL Editor**, pega el contenido de `supabase/schema.sql` y pulsa **Run**.
 3. Haz lo mismo con `supabase/seed.sql` para cargar los espectáculos y tareas actuales.
-4. En **Table Editor > team**, añade una fila con cada email que deba entrar.
-5. En **Project Settings > API**, copia la **Project URL** y la clave **anon public**. Van en `config.js`.
+4. Ejecuta también `supabase/equipo.sql` y `supabase/adjuntos.sql` (pestaña Equipo y adjuntos).
+5. En **Table Editor > team**, añade una fila con cada email que deba entrar.
+6. En **Project Settings > API**, copia la **Project URL** y la clave **anon public**. Van en `config.js`.
 
 ### 2. Vercel
 1. En vercel.com, pulsa **Add New > Project** e importa este repositorio.
@@ -42,3 +43,6 @@ Todo vive en la tabla `docs` (`collection`, `id`, `data`):
 - `shows`: espectáculos (name, artist, date, time, venue, audience, notes).
 - `items`: tareas del calendario (type publicacion/campana/material/tarea, title, show, date, time, status pendiente/curso/hecho/bloqueado, owner, notes).
 - `requests`: lo pedido a cada artista desde «Pedir al artista».
+- `people`: nombre visible de cada persona del equipo (id = email).
+
+Los adjuntos de las tareas se guardan a calidad original en el bucket privado `adjuntos` de Supabase Storage (máx. 50 MB por archivo), en `items/<id de la tarea>/`.

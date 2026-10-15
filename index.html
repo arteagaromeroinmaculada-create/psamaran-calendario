@@ -144,6 +144,13 @@ dialog h2{font-family:var(--display);font-size:28px;text-transform:uppercase;mar
 .dlgacts{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;margin-top:4px}
 .dlgacts .r{display:flex;gap:8px}
 .who{font-size:12px;color:var(--muted)}
+.atts{display:flex;flex-direction:column;gap:6px}
+.att{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px;min-width:0}
+.att .th{width:48px;height:48px;border-radius:6px;background:var(--sunk);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--muted);overflow:hidden;text-transform:uppercase}
+.att .th img{width:100%;height:100%;object-fit:cover}
+.att a{color:var(--ink);font-weight:700;overflow-wrap:anywhere;text-decoration:none}
+.att a:hover{text-decoration:underline}
+.att small{display:block;color:var(--muted);font-size:12px}
 .err{color:var(--s-bloq);font-size:13px}
 /* Pedir al artista */
 #dlgReq{width:min(760px,calc(100vw - 24px))}
@@ -236,6 +243,14 @@ img{max-width:100%}
       <label class="fld"><span>Quién</span><select id="iOwner"></select></label>
     </div>
     <label class="fld"><span>Notas</span><textarea id="iNotes" rows="3" maxlength="2000"></textarea></label>
+    <div class="fld"><span>Adjuntos</span>
+      <div class="atts" id="iAtts"></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label class="btn" id="iAttBtn" for="iFile" style="cursor:pointer">Adjuntar archivos o fotos</label>
+        <input type="file" id="iFile" multiple hidden>
+        <span class="who" id="iAttMsg"></span>
+      </div>
+    </div>
     <div class="who" id="iWho"></div>
     <div class="err" id="iErr" hidden></div>
     <div class="dlgacts">
@@ -459,7 +474,8 @@ function rowFor(e){
         (!e.isFn && show) ? el("span",{text:show.name}) : null,
         (!e.isFn && e.show==="general") ? el("span",{text:"General"}) : null,
         (!e.isFn && e.owner) ? el("span",{text:"Quién: "+ownerLabel(e.owner)}) : null,
-        e.notes ? el("span",{text:"· notas"}) : null)),
+        e.notes ? el("span",{text:"· notas"}) : null,
+        e.attachments?.length ? el("span",{text:`· ${e.attachments.length} adjunto${e.attachments.length>1?"s":""}`}) : null)),
     e.isFn ? el("span",{class:"tag-fn",text:"Función"})
       : el("button",{class:`status ${e.status}`,type:"button",style:`--sc:var(${st.c})`,disabled:!writable,title:writable?"Cambiar estado":null,"aria-label":`Estado: ${st.label}. Cambiar`,onclick:()=>cycleStatus(e)}, st.label)
   );
@@ -580,19 +596,26 @@ async function openItem(e){
   for(const id of ["iType","iTitle","iShow","iDate","iTime","iStatus","iOwner","iNotes"]) $("#"+id).disabled = !writable;
   $("#iSave").hidden = !writable; $("#iDel").hidden = !(e && writable); $("#iDel").textContent = "Borrar"; $("#iDel").dataset.confirm = "";
   $("#iErr").hidden = true; $("#iWho").textContent = "";
+  A = {id: e?.id || crypto.randomUUID(), atts: [...(e?.attachments||[])], uploadedNew: [], existing: !!e};
+  $("#iAttBtn").hidden = !writable; $("#iAttMsg").textContent = "";
+  renderAtts(writable);
   $("#dlgItem").showModal();
   if(e?.updatedBy && S.user){ const ps = await S.user.profiles([e.updatedBy]); const n = ps[e.updatedBy]?.name; if(n && e.updatedAt) $("#iWho").textContent = `Último cambio: ${n}, ${fmtDay(e.updatedAt.slice(0,10))}`; }
 }
-$("#iCancel").onclick = () => $("#dlgItem").close();
+$("#iCancel").onclick = async () => {
+  $("#dlgItem").close();
+  // Si era una entrada nueva sin guardar, borra lo que se subió
+  if(A && !A.existing && A.uploadedNew.length) await SB.storage.from(BUCKET).remove(A.uploadedNew).catch(()=>{});
+};
 $("#formItem").addEventListener("submit", async ev=>{
   ev.preventDefault();
   const body = { type:$("#iType").value, title:$("#iTitle").value.trim(), show:$("#iShow").value, date:$("#iDate").value, time:$("#iTime").value,
-    status:$("#iStatus").value, owner:$("#iOwner").value, notes:$("#iNotes").value.trim(), updatedBy:S.uid, updatedAt:new Date().toISOString() };
+    status:$("#iStatus").value, owner:$("#iOwner").value, notes:$("#iNotes").value.trim(), attachments:A.atts, updatedBy:S.uid, updatedAt:new Date().toISOString() };
   if(!body.title || !body.date) return;
   $("#iSave").disabled = true;
   try{
-    if(S.editing) await S.db.collection("items").doc(S.editing.id).set(body);
-    else await S.db.collection("items").add(body);
+    await S.db.collection("items").doc(A.id).set(body);
+    A.existing = true;
     $("#dlgItem").close();
   }catch(err){ onWriteError(err, $("#iErr")); }
   finally{ $("#iSave").disabled = false; }
@@ -600,8 +623,56 @@ $("#formItem").addEventListener("submit", async ev=>{
 $("#iDel").onclick = async ()=>{
   const b = $("#iDel");
   if(!b.dataset.confirm){ b.dataset.confirm = "1"; b.textContent = "¿Seguro? Pulsa otra vez"; return; }
-  try{ await S.db.collection("items").doc(S.editing.id).delete(); $("#dlgItem").close(); }catch(err){ onWriteError(err, $("#iErr")); }
+  try{
+    await S.db.collection("items").doc(S.editing.id).delete();
+    const paths = (S.editing.attachments||[]).map(a=>a.path);
+    if(paths.length) SB.storage.from(BUCKET).remove(paths).catch(()=>{});
+    $("#dlgItem").close();
+  }catch(err){ onWriteError(err, $("#iErr")); }
 };
+
+// ---------- Adjuntos (Supabase Storage, calidad original) ----------
+const BUCKET = "adjuntos";
+const MAX_MB = 50;
+let A = null;
+const fmtSize = b => b > 1048576 ? (b/1048576).toFixed(1).replace(".",",") + " MB" : Math.max(1, Math.round(b/1024)) + " KB";
+async function renderAtts(writable){
+  const box = $("#iAtts"); box.replaceChildren();
+  if(!A.atts.length){ box.append(el("span",{class:"who",text:"Sin adjuntos."})); return; }
+  for(const a of A.atts){
+    const th = el("div",{class:"th",text:(a.name.split(".").pop()||"").slice(0,4)});
+    const link = el("a",{href:"#",target:"_blank",rel:"noopener",text:a.name});
+    const rm = writable ? el("button",{class:"btn danger",type:"button",style:"padding:5px 10px;font-size:12px",onclick:async()=>{
+      if(!rm.dataset.confirm){ rm.dataset.confirm="1"; rm.textContent="¿Quitar?"; return; }
+      await SB.storage.from(BUCKET).remove([a.path]).catch(()=>{});
+      A.atts = A.atts.filter(x=>x.path!==a.path);
+      if(A.existing) await S.db.collection("items").doc(A.id).update({attachments:A.atts}).catch(()=>{});
+      renderAtts(writable);
+    }},"Quitar") : el("span");
+    box.append(el("div",{class:"att"}, th, el("div",{style:"min-width:0"}, link, el("small",{text:fmtSize(a.size||0)})), rm));
+    // Enlaces temporales: vista previa y descarga con el nombre original
+    SB.storage.from(BUCKET).createSignedUrl(a.path, 3600, {download:a.name}).then(({data})=>{ if(data) link.href = data.signedUrl; });
+    if((a.type||"").startsWith("image/")) SB.storage.from(BUCKET).createSignedUrl(a.path, 3600).then(({data})=>{ if(data){ th.replaceChildren(el("img",{src:data.signedUrl,alt:""})); } });
+  }
+}
+$("#iFile").addEventListener("change", async ev=>{
+  const files = [...ev.target.files]; ev.target.value = "";
+  if(!files.length) return;
+  const msg = $("#iAttMsg"); let n = 0, fails = [];
+  for(const f of files){
+    n++; msg.textContent = `Subiendo ${n} de ${files.length}…`;
+    if(f.size > MAX_MB*1048576){ fails.push(`${f.name} (más de ${MAX_MB} MB)`); continue; }
+    const safe = f.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\w.\-]+/g,"_").slice(-80);
+    const path = `items/${A.id}/${Date.now()}-${safe}`;
+    const {error} = await SB.storage.from(BUCKET).upload(path, f, {contentType: f.type || "application/octet-stream", upsert:false});
+    if(error){ console.warn("Subida:", error); fails.push(f.name); continue; }
+    A.atts.push({path, name:f.name, size:f.size, type:f.type||"", by:S.uid, at:new Date().toISOString()});
+    if(!A.existing) A.uploadedNew.push(path);
+  }
+  if(A.existing) await S.db.collection("items").doc(A.id).update({attachments:A.atts}).catch(()=>{});
+  msg.textContent = fails.length ? `No se han podido subir: ${fails.join(", ")}.` : (A.existing ? "Subido." : "Subido. Pulsa «Guardar» para quedártelo.");
+  renderAtts(true);
+});
 
 function openShow(s){
   if(!s) return;
