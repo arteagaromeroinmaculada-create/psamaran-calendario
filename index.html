@@ -273,6 +273,7 @@ img{max-width:100%}
       <label class="fld"><span>Sala</span><input id="sVenue" maxlength="80" placeholder="Sala Tabor"></label>
       <label class="fld"><span>Público</span><select id="sAud"><option value="">Sin definir</option><option value="adultos">Adultos</option><option value="familias">Familias</option></select></label>
     </div>
+    <label class="fld"><span>Instagram de la sala</span><input id="sVenueIg" maxlength="60" placeholder="@salatabor"></label>
     <label class="fld"><span>Notas</span><textarea id="sNotes" rows="2" maxlength="1000"></textarea></label>
     <div class="err" id="sErr" hidden></div>
     <div class="dlgacts">
@@ -313,7 +314,10 @@ img{max-width:100%}
           <label class="fld"><span>Nombre</span><input id="rName" maxlength="60" required placeholder="Nombre"></label>
         </div>
         <div class="two">
-          <label class="fld"><span>Instagram a etiquetar</span><input id="rFrom" maxlength="120" value="@tomaplanazostribu @salatabor"></label>
+          <div class="fld"><span>Etiquetar en Instagram</span>
+            <label class="ask" style="padding:2px 0"><input type="checkbox" id="rTagBrand" checked><span>@tomaplanazostribu</span></label>
+            <label class="ask" style="padding:2px 0;align-items:center"><input type="checkbox" id="rTagSala" checked><input id="rSalaIg" maxlength="60" placeholder="@ de la sala" style="flex:1;min-width:0"></label>
+          </div>
           <label class="fld"><span>Móvil (opcional)</span><input id="rPhone" inputmode="tel" maxlength="20" placeholder="+34 600 000 000"></label>
         </div>
         <label class="fld"><span>Su enlace de entradas (opcional)</span><input id="rLink" maxlength="300" placeholder="Enlace de entradas"></label>
@@ -681,7 +685,7 @@ function openShow(s){
   S.editingShow = s.id ? s : null;
   $("#dlgShowTitle").textContent = S.editingShow ? "Editar espectáculo" : "Nuevo espectáculo";
   $("#sName").value = s.name||""; $("#sArtist").value = s.artist||""; $("#sDate").value = s.date||""; $("#sTime").value = s.time||"";
-  $("#sVenue").value = s.venue||""; $("#sAud").value = s.audience||""; $("#sNotes").value = s.notes||"";
+  $("#sVenue").value = s.venue||""; $("#sVenueIg").value = s.venueIg||""; $("#sAud").value = s.audience||""; $("#sNotes").value = s.notes||"";
   $("#sDel").hidden = !S.editingShow; $("#sDel").textContent = "Borrar"; $("#sDel").dataset.confirm = ""; $("#sErr").hidden = true;
   $("#dlgShow").showModal();
 }
@@ -689,7 +693,7 @@ $("#sCancel").onclick = () => $("#dlgShow").close();
 $("#formShow").addEventListener("submit", async ev=>{
   ev.preventDefault();
   const body = { name:$("#sName").value.trim(), artist:$("#sArtist").value.trim(), date:$("#sDate").value, time:$("#sTime").value,
-    venue:$("#sVenue").value.trim(), audience:$("#sAud").value, notes:$("#sNotes").value.trim(), updatedBy:S.uid, updatedAt:new Date().toISOString() };
+    venue:$("#sVenue").value.trim(), venueIg:$("#sVenueIg").value.trim(), audience:$("#sAud").value, notes:$("#sNotes").value.trim(), updatedBy:S.uid, updatedAt:new Date().toISOString() };
   if(!body.name) return;
   try{
     if(S.editingShow) await S.db.collection("shows").doc(S.editingShow.id).set(body);
@@ -719,8 +723,8 @@ const ASKS = [
     txt:c=>`Fotos en alta calidad y un texto corto de presentación del espectáculo`},
   {g:"Material", k:"stats", label:"Estadísticas de público de Instagram", hint:"Para saber cuánto pesa Madrid", type:"material", soon:true,
     txt:c=>`Una captura de ${c.su} estadísticas de público en Instagram (Panel > Público > Ciudades), para saber cuánta gente ${c.tiene} en Madrid`},
-  {g:"Redes", k:"colab", label:"Aceptar publicación colaborativa en Instagram", hint:"Sale en los dos perfiles", type:"publicacion", off:[[-16,"Publicación colaborativa"]],
-    txt:(c,d)=>`Aceptar la invitación de colaboración en Instagram que ${c.te} enviaremos con el cartel y el vídeo (${d[0]}). Así sale en los dos perfiles`},
+  {g:"Redes", k:"colab", label:"Publicación colaborativa en Instagram", hint:"La hacen ellos y nos invitan; sale en los dos perfiles", type:"publicacion", off:[[-16,"Publicación colaborativa"]],
+    txt:(c,d)=>`Publicación colaborativa (${d[0]})`},
   {g:"Redes", k:"reels", label:"3 vídeos promocionales", hint:"Invitación, fragmento y cuenta atrás", type:"publicacion", off:[[-16,"Vídeo 1, invitación"],[-7,"Vídeo 2, fragmento"],[-2,"Vídeo 3, cuenta atrás"]],
     txt:(c,d)=>`Tres vídeos cortos en vertical: una invitación contando qué es, fecha y sitio (${d[0]}), un fragmento del espectáculo (${d[1]}) y una cuenta atrás (${d[2]})`},
   {g:"Redes", k:"stories", label:"Stories con enlace de entradas", hint:"Cada reel también en stories", type:"publicacion", off:[[-16,"Story con enlace (invitación)"],[-7,"Story con enlace (fragmento)"],[-2,"Story con enlace (cuenta atrás)"]],
@@ -728,6 +732,15 @@ const ASKS = [
   {g:"Redes", k:"bio", label:"Enlace de entradas en la biografía", type:"tarea", off:[[-16,"Enlace en la biografía"]],
     txt:(c,d)=>`Poner el enlace de entradas en ${c.su_s} biografía desde el ${d[0].replace(/^el /,"")} hasta la función`},
 ];
+const BRAND_IG = "@tomaplanazostribu";
+// Instagram de la sala: el de la ficha, si no el de otra función en la misma sala, y si no Sala Tabor
+function venueIg(s){
+  if(s.venueIg) return s.venueIg;
+  const v = (s.venue||"").trim().toLowerCase();
+  const twin = v && S.shows.find(x=>x.venueIg && (x.venue||"").trim().toLowerCase()===v);
+  if(twin) return twin.venueIg;
+  return !v || v.includes("tabor") ? "@salatabor" : "";
+}
 const addDays = (s,n) => { const d = parse(s); d.setDate(d.getDate()+n); return iso(d); };
 const maxIso = (a,b) => a>b ? a : b;
 let R = null;
@@ -751,7 +764,7 @@ function reqPlan(){
 
 function reqMessage(p){
   const s = R.show, has = k => R.picked.has(k);
-  const tags = ($("#rFrom").value.trim() || "@tomaplanazostribu @salatabor").split(/[\s,;]+|\by\b/).filter(Boolean).map(t=>"@"+t.replace(/^@+/,""));
+  const tags = [$("#rTagBrand").checked && BRAND_IG, $("#rTagSala").checked && $("#rSalaIg").value.trim()].filter(Boolean).map(t=>"@"+t.replace(/^@+/,""));
   const tag = tags.length>1 ? tags.slice(0,-1).join(", ")+" y "+tags.at(-1) : tags[0];
   const DOWL = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
   const fday = x => { const d = parse(x); return `${DOWL[(d.getDay()+6)%7]} ${d.getDate()} ${MON[d.getMonth()]}`; };
@@ -759,14 +772,14 @@ function reqMessage(p){
   const when = s.date ? ` del día ${parse(s.date).getDate()} de ${MONL[parse(s.date).getMonth()]}` : "";
   const L = ["Hola!", "", `Nos piden desde marketing para el evento${when}${s.time?` a las ${s.time}h`:""} de ${s.name}:`, ""];
   if(has("reels")){
-    let t = `Promocionar el espectáculo con 3 vídeos promocionales. Os pediríamos que sean reels en su Instagram, ${has("colab")?"como publicación colaborativa o etiquetando":"etiquetando"} a ${tag}.`;
+    let t = `Promocionar el espectáculo con 3 vídeos promocionales. Os pediríamos que sean reels en su Instagram${tag ? `, ${has("colab")?"como publicación colaborativa o etiquetando":"etiquetando"} a ${tag}` : has("colab") ? ", como publicación colaborativa" : ""}.`;
     if(has("stories")) t += " Que cada reel lo comparta también en stories con el enlace de entradas.";
     L.push(t, "", "Esta es la estructura y el calendario que proponemos:", "",
       `1 · Invitación, ${slot(-16)}: a cámara contando qué es el espectáculo, fecha, hora y sala.`, "",
       `2 · Fragmento, ${slot(-7)}: un trozo del espectáculo que enganche.`, "",
       `3 · Cuenta atrás, ${slot(-2)}: “Esta semana nos vemos en Pozuelo”, con el recordatorio de fecha y hora.`, "");
   } else {
-    if(has("colab")) L.push(`Que aceptéis la publicación colaborativa en Instagram que os enviaremos (${slot(-16)}), o que publiquéis etiquetando a ${tag}.`, "");
+    if(has("colab")) L.push(`Que hagáis una publicación colaborativa en Instagram (${slot(-16)})${tag?` invitando a ${tag}`:""}, para que salga en los perfiles de todos.`, "");
     if(has("stories")) L.push(`Que compartáis stories con el enlace de entradas: ${slot(-16)}, ${slot(-7)} y ${slot(-2)}.`, "");
   }
   const link = $("#rLink").value.trim();
@@ -805,7 +818,7 @@ function openReq(s){
   R = {show:s, role:"artista", picked:new Set(["reels","colab","stories","bio","video"]), edited:false};
   $("#rTitle").textContent = "Pedir al artista";
   fillSelect($("#rShow"), sortedShows().map(x=>[x.id, x.name + (x.date ? " · " + fmtDay(x.date) : "")]), s.id);
-  $("#rRole").value = "artista"; $("#rName").value = ""; $("#rPhone").value = ""; $("#rLink").value = "";
+  $("#rRole").value = "artista"; $("#rName").value = ""; $("#rTagBrand").checked = true; $("#rTagSala").checked = true; $("#rSalaIg").value = venueIg(s); $("#rPhone").value = ""; $("#rLink").value = "";
   $("#rMsg").value = ""; $("#rErr").hidden = true; $("#rCopied").hidden = true;
   const box = $("#rAsks"); box.replaceChildren(); let g = "";
   for(const a of ASKS){
@@ -817,7 +830,7 @@ function openReq(s){
   refreshReq();
   $("#dlgReq").showModal();
 }
-for(const id of ["rRole","rName","rFrom","rLink","rPhone"]) $("#"+id).addEventListener("input", ()=>{ R.role = $("#rRole").value; refreshReq(); });
+for(const id of ["rRole","rName","rTagBrand","rTagSala","rSalaIg","rLink","rPhone"]) $("#"+id).addEventListener("input", ()=>{ R.role = $("#rRole").value; refreshReq(); });
 $("#rMsg").addEventListener("input", ()=>{ R.edited = true; refreshReq(); });
 $("#rCancel").onclick = () => $("#dlgReq").close();
 $("#rCopy").onclick = async ()=>{
@@ -900,7 +913,7 @@ $("#fPast").onchange = e => { S.fPast = e.target.checked; render(); };
 $("#addItem").onclick = () => openItem(null);
 $("#addReq").onclick = () => openReq(null);
 $("#addList").onclick = () => openList();
-$("#rShow").addEventListener("change", e=>{ R.show = showById(e.target.value); R.edited = false; refreshReq(); });
+$("#rShow").addEventListener("change", e=>{ R.show = showById(e.target.value); $("#rSalaIg").value = venueIg(R.show); R.edited = false; refreshReq(); });
 $("#addShow").onclick = () => openShow({});
 
 // ---------- Equipo: quién puede entrar ----------
