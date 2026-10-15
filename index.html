@@ -141,6 +141,13 @@ dialog h2{font-family:var(--display);font-size:28px;text-transform:uppercase;mar
 .fld span{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .fld input,.fld select,.fld textarea{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;width:100%}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two>*{min-width:0}
+.two{align-items:end}
+.tags{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+.tag{display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px;min-width:0}
+.tag input[type=checkbox]{width:17px;height:17px;margin:0;flex:none;accent-color:var(--accent)}
+.tag.sala{flex:1 1 220px;gap:10px}
+.tag.sala input:not([type]){flex:1;min-width:0}
 .dlgacts{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;margin-top:4px}
 .dlgacts .r{display:flex;gap:8px}
 .who{font-size:12px;color:var(--muted)}
@@ -314,13 +321,15 @@ img{max-width:100%}
           <label class="fld"><span>Nombre</span><input id="rName" maxlength="60" required placeholder="Nombre"></label>
         </div>
         <div class="two">
-          <div class="fld"><span>Etiquetar en Instagram</span>
-            <label class="ask" style="padding:2px 0"><input type="checkbox" id="rTagBrand" checked><span>@tomaplanazostribu</span></label>
-            <label class="ask" style="padding:2px 0;align-items:center"><input type="checkbox" id="rTagSala" checked><input id="rSalaIg" maxlength="60" placeholder="@ de la sala" style="flex:1;min-width:0"></label>
-          </div>
           <label class="fld"><span>Móvil (opcional)</span><input id="rPhone" inputmode="tel" maxlength="20" placeholder="+34 600 000 000"></label>
+          <label class="fld"><span>Enlace de entradas</span><input id="rLink" maxlength="300" placeholder="Enlace de entradas"></label>
         </div>
-        <label class="fld"><span>Su enlace de entradas (opcional)</span><input id="rLink" maxlength="300" placeholder="Enlace de entradas"></label>
+        <div class="fld"><span>Etiquetar en Instagram</span>
+          <div class="tags">
+            <label class="tag"><input type="checkbox" id="rTagBrand" checked>@tomaplanazostribu</label>
+            <div class="tag sala"><label class="tag"><input type="checkbox" id="rTagSala" checked>Sala</label><input id="rSalaIg" maxlength="60" placeholder="@ de la sala"></div>
+          </div>
+        </div>
         <div class="asks" id="rAsks"></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
