@@ -313,7 +313,7 @@ img{max-width:100%}
           <label class="fld"><span>Nombre</span><input id="rName" maxlength="60" required placeholder="Nombre"></label>
         </div>
         <div class="two">
-          <label class="fld"><span>Firma</span><input id="rFrom" maxlength="60" value="la Sala Tabor"></label>
+          <label class="fld"><span>Instagram a etiquetar</span><input id="rFrom" maxlength="60" value="@salatabor"></label>
           <label class="fld"><span>Móvil (opcional)</span><input id="rPhone" inputmode="tel" maxlength="20" placeholder="+34 600 000 000"></label>
         </div>
         <label class="fld"><span>Su enlace de entradas (opcional)</span><input id="rLink" maxlength="300" placeholder="Enlace de entradas"></label>
@@ -723,7 +723,7 @@ const ASKS = [
     txt:(c,d)=>`Aceptar la invitación de colaboración en Instagram que ${c.te} enviaremos con el cartel y el vídeo (${d[0]}). Así sale en los dos perfiles`},
   {g:"Redes", k:"reels", label:"3 vídeos promocionales", hint:"Invitación, fragmento y cuenta atrás", type:"publicacion", off:[[-16,"Vídeo 1, invitación"],[-7,"Vídeo 2, fragmento"],[-2,"Vídeo 3, cuenta atrás"]],
     txt:(c,d)=>`Tres vídeos cortos en vertical: una invitación contando qué es, fecha y sitio (${d[0]}), un fragmento del espectáculo (${d[1]}) y una cuenta atrás (${d[2]})`},
-  {g:"Redes", k:"stories", label:"Stories con enlace de entradas", hint:"Al anunciarlo, la semana de la función y el mismo día", type:"publicacion", off:[[-16,"Story con enlace"],[-7,"Story recordatorio"],[0,"Story «hoy en Pozuelo»"]],
+  {g:"Redes", k:"stories", label:"Stories con enlace de entradas", hint:"Cada reel también en stories", type:"publicacion", off:[[-16,"Story con enlace (invitación)"],[-7,"Story con enlace (fragmento)"],[-2,"Story con enlace (cuenta atrás)"]],
     txt:(c,d)=>`Stories con el enlace de entradas: una al anunciarlo (${d[0]}), otra la semana de la función (${d[1]}) y otra el mismo día (${d[2]})`},
   {g:"Redes", k:"bio", label:"Enlace de entradas en la biografía", type:"tarea", off:[[-16,"Enlace en la biografía"]],
     txt:(c,d)=>`Poner el enlace de entradas en ${c.su_s} biografía desde el ${d[0].replace(/^el /,"")} hasta la función`},
@@ -752,23 +752,36 @@ function reqPlan(){
 }
 
 function reqMessage(p){
-  const s = R.show, rep = R.role==="rep";
-  const c = rep ? {su:"sus", su_s:"su", te:"le", tiene:"le sigue"} : {su:"tus", su_s:"tu", te:"te", tiene:"te sigue"};
-  const fdate = x => { const d = parse(x); return `${DOW[(d.getDay()+6)%7]} ${d.getDate()} ${MON[d.getMonth()]}`; };
-  const when = s.date ? `del ${["lunes","martes","miércoles","jueves","viernes","sábado","domingo"][(parse(s.date).getDay()+6)%7]} ${parse(s.date).getDate()} de ${MONL[parse(s.date).getMonth()]}${s.time?" a las "+s.time:""}` : "";
-  const who = rep && s.artist ? ` de ${s.artist}` : "";
-  const lines = [`¡Hola, ${p.name}! Te escribimos de ${$("#rFrom").value.trim()||"la Sala Tabor"} por la función de ${s.name}${who} ${when}${s.venue && !($("#rFrom").value||"la Sala Tabor").toLowerCase().includes(s.venue.toLowerCase())?" en "+s.venue:""}.`.replace(/\s+\./,"."), "",
-    rep ? `Estamos con la promoción y nos ayudaría mucho que ${s.artist||"el artista"} nos echara una mano con esto:` : "Estamos con la promoción y nos ayudaría mucho que nos echaras una mano con esto:"];
-  p.picked.forEach((a,i)=>{
-    const ds = a.soon ? [] : (s.date ? a.off.map(([o])=>"el "+fdate(maxIso(todayIso(), addDays(s.date,o)))) : a.off.map(()=>"fecha por cerrar"));
-    let txt = a.txt(c, ds);
-    if(a.soon) txt += ` (si puede ser, antes del ${fdate(addDays(todayIso(),3))})`;
-    lines.push(`${i+1}. ${txt}.`);
-  });
+  const s = R.show, has = k => R.picked.has(k);
+  const tag = "@" + ($("#rFrom").value.trim() || "salatabor").replace(/^@+/,"");
+  const DOWL = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
+  const fday = x => { const d = parse(x); return `${DOWL[(d.getDay()+6)%7]} ${d.getDate()} ${MON[d.getMonth()]}`; };
+  const slot = o => s.date ? fday(maxIso(todayIso(), addDays(s.date,o))) : "fecha por cerrar";
+  const when = s.date ? ` del día ${parse(s.date).getDate()} de ${MONL[parse(s.date).getMonth()]}` : "";
+  const L = ["Hola!", "", `Nos piden desde marketing para el evento${when}${s.time?` a las ${s.time}h`:""} de ${s.name}:`, ""];
+  if(has("reels")){
+    let t = `Promocionar el espectáculo con 3 vídeos promocionales. Os pediríamos que sean reels en su Instagram, ${has("colab")?"como publicación colaborativa o etiquetando":"etiquetando"} a ${tag}.`;
+    if(has("stories")) t += " Que cada reel lo comparta también en stories con el enlace de entradas.";
+    L.push(t, "", "Esta es la estructura y el calendario que proponemos:", "",
+      `1 · Invitación, ${slot(-16)}: a cámara contando qué es el espectáculo, fecha, hora y sala.`, "",
+      `2 · Fragmento, ${slot(-7)}: un trozo del espectáculo que enganche.`, "",
+      `3 · Cuenta atrás, ${slot(-2)}: “Esta semana nos vemos en Pozuelo”, con el recordatorio de fecha y hora.`, "");
+  } else {
+    if(has("colab")) L.push(`Que aceptéis la publicación colaborativa en Instagram que os enviaremos (${slot(-16)}), o que publiquéis etiquetando a ${tag}.`, "");
+    if(has("stories")) L.push(`Que compartáis stories con el enlace de entradas: ${slot(-16)}, ${slot(-7)} y ${slot(-2)}.`, "");
+  }
   const link = $("#rLink").value.trim();
-  if(link) lines.push("", `${rep?"Su":"Tu"} enlace de entradas (es ${rep?"el suyo":"el tuyo"}, así vemos cuántas vienen de ${rep?"su parte":"ti"}): ${link}`);
-  lines.push("", "Cualquier duda, nos dices por aquí. ¡Mil gracias!");
-  return lines.join("\n");
+  const where = [has("bio")&&"en la bio", has("stories")&&"en el sticker de enlace de las stories"].filter(Boolean).join(" y ");
+  if(link){
+    L.push(`Las entradas ya están ${/soundtix/i.test(link)?"en Soundtix (nuestro canal principal)":"a la venta"}. Aquí te lo dejo:`, "", link, "");
+    if(where) L.push(`Lo ideal es ponerlo ${where}.`, "");
+  } else if(where) L.push(`Os pasamos el enlace de entradas para ponerlo ${where}.`, "");
+  if(has("video")) L.push(`Lo que más nos urge es un reel (vídeo vertical) para los anuncios. Mejor sin música de Instagram, que la ponemos nosotros${has("ads")?", y con vuestro permiso para usarlo en anuncios":""}.`, "");
+  else if(has("ads")) L.push("Y vuestro permiso para usar vuestras publicaciones en anuncios (en Instagram: Configuración > Contenido de marca).", "");
+  const extra = [has("cartel")&&"el cartel en JPG, mejor en vertical 4:5", has("fotos")&&"fotos en alta calidad y un texto corto de presentación", has("stats")&&"una captura de las estadísticas de público de Instagram (Panel > Público > Ciudades)"].filter(Boolean);
+  if(extra.length) L.push("Si nos podéis pasar también:", ...extra.map(x=>"· "+x.charAt(0).toUpperCase()+x.slice(1)), "");
+  L.push("Gracias!!");
+  return L.join("\n");
 }
 
 function refreshReq(){
@@ -791,7 +804,7 @@ function openReq(s){
     s = showById(S.fShow) || sortedShows().find(x=>x.date && x.date>=t) || sortedShows()[0];
     if(!s) return;
   }
-  R = {show:s, role:"artista", picked:new Set(), edited:false};
+  R = {show:s, role:"artista", picked:new Set(["reels","colab","stories","bio","video","ads"]), edited:false};
   $("#rTitle").textContent = "Pedir al artista";
   fillSelect($("#rShow"), sortedShows().map(x=>[x.id, x.name + (x.date ? " · " + fmtDay(x.date) : "")]), s.id);
   $("#rRole").value = "artista"; $("#rName").value = ""; $("#rPhone").value = ""; $("#rLink").value = "";
@@ -800,7 +813,7 @@ function openReq(s){
   for(const a of ASKS){
     if(a.g!==g){ g = a.g; box.append(el("h4",{text:g})); }
     const id = "ask-"+a.k;
-    box.append(el("label",{class:"ask",for:id}, el("input",{type:"checkbox",id,onchange:e=>{ e.target.checked?R.picked.add(a.k):R.picked.delete(a.k); refreshReq(); }}),
+    box.append(el("label",{class:"ask",for:id}, el("input",{type:"checkbox",id,checked:R.picked.has(a.k),onchange:e=>{ e.target.checked?R.picked.add(a.k):R.picked.delete(a.k); refreshReq(); }}),
       el("span",{}, a.label, a.hint ? el("small",{text:a.hint}) : null)));
   }
   refreshReq();
