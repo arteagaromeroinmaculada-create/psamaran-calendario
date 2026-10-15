@@ -254,7 +254,7 @@ img{max-width:100%}
     <div class="who" id="iWho"></div>
     <div class="err" id="iErr" hidden></div>
     <div class="dlgacts">
-      <div><button type="button" class="btn danger" id="iDel" hidden>Borrar</button></div>
+      <div style="display:flex;gap:8px"><button type="button" class="btn danger" id="iDel" hidden>Borrar</button><button type="button" class="btn" id="iDup" hidden>Duplicar</button></div>
       <div class="r"><button type="button" class="btn" id="iCancel">Cancelar</button><button class="btn primary" id="iSave">Guardar</button></div>
     </div>
   </form>
@@ -598,7 +598,7 @@ async function openItem(e){
   $("#iTitle").value = e?.title||""; $("#iDate").value = e?.date || S.selDay || todayIso(); $("#iTime").value = e?.time||"";
   fillOwner($("#iOwner"), e ? (e.owner||"") : (S.uid||"")); $("#iNotes").value = e?.notes||"";
   for(const id of ["iType","iTitle","iShow","iDate","iTime","iStatus","iOwner","iNotes"]) $("#"+id).disabled = !writable;
-  $("#iSave").hidden = !writable; $("#iDel").hidden = !(e && writable); $("#iDel").textContent = "Borrar"; $("#iDel").dataset.confirm = "";
+  $("#iSave").hidden = !writable; $("#iDel").hidden = !(e && writable); $("#iDup").hidden = !(e && writable); $("#iDel").textContent = "Borrar"; $("#iDel").dataset.confirm = "";
   $("#iErr").hidden = true; $("#iWho").textContent = "";
   A = {id: e?.id || crypto.randomUUID(), atts: [...(e?.attachments||[])], uploadedNew: [], existing: !!e};
   $("#iAttBtn").hidden = !writable; $("#iAttMsg").textContent = "";
@@ -624,6 +624,32 @@ $("#formItem").addEventListener("submit", async ev=>{
   }catch(err){ onWriteError(err, $("#iErr")); }
   finally{ $("#iSave").disabled = false; }
 });
+// Duplicar: la ficha pasa a ser una entrada nueva con los mismos datos (y copia de los adjuntos)
+$("#iDup").onclick = async ()=>{
+  const src = A;
+  S.editing = null;
+  A = {id: crypto.randomUUID(), atts: [], uploadedNew: [], existing: false};
+  $("#dlgItemTitle").textContent = "Copia (nueva entrada)";
+  $("#iTitle").value = $("#iTitle").value.trim() + " (copia)";
+  $("#iStatus").value = "pendiente";
+  $("#iDel").hidden = true; $("#iDup").hidden = true; $("#iWho").textContent = ""; $("#iErr").hidden = true;
+  renderAtts(true);
+  const msg = $("#iAttMsg");
+  msg.textContent = "Cambia lo que quieras y pulsa «Guardar».";
+  $("#iDate").focus();
+  if(!src.atts.length) return;
+  $("#iSave").disabled = true; msg.textContent = "Copiando adjuntos…";
+  let fails = 0;
+  for(const a of src.atts){
+    const path = `items/${A.id}/${a.path.split("/").pop()}`;
+    const {error} = await SB.storage.from(BUCKET).copy(a.path, path);
+    if(error){ console.warn("Copia:", error); fails++; continue; }
+    A.atts.push({...a, path, by:S.uid, at:new Date().toISOString()}); A.uploadedNew.push(path);
+  }
+  renderAtts(true);
+  $("#iSave").disabled = false;
+  msg.textContent = (fails ? `No se han podido copiar ${fails} adjuntos. ` : "") + "Cambia lo que quieras y pulsa «Guardar».";
+};
 $("#iDel").onclick = async ()=>{
   const b = $("#iDel");
   if(!b.dataset.confirm){ b.dataset.confirm = "1"; b.textContent = "¿Seguro? Pulsa otra vez"; return; }
