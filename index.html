@@ -727,8 +727,6 @@ const ASKS = [
     txt:(c,d)=>`Stories con el enlace de entradas: una al anunciarlo (${d[0]}), otra la semana de la función (${d[1]}) y otra el mismo día (${d[2]})`},
   {g:"Redes", k:"bio", label:"Enlace de entradas en la biografía", type:"tarea", off:[[-16,"Enlace en la biografía"]],
     txt:(c,d)=>`Poner el enlace de entradas en ${c.su_s} biografía desde el ${d[0].replace(/^el /,"")} hasta la función`},
-  {g:"Permisos", k:"ads", label:"Permiso para usar su vídeo en anuncios", hint:"El anuncio puede salir con su nombre", type:"tarea", soon:true,
-    txt:c=>`Activar el permiso de anuncios de colaboración (Instagram: Configuración > Contenido de marca) para que podamos promocionar ${c.su_s} publicación desde ${c.su_s} perfil`},
 ];
 const addDays = (s,n) => { const d = parse(s); d.setDate(d.getDate()+n); return iso(d); };
 const maxIso = (a,b) => a>b ? a : b;
@@ -776,8 +774,7 @@ function reqMessage(p){
     L.push(`Las entradas ya están ${/soundtix/i.test(link)?"en Soundtix (nuestro canal principal)":"a la venta"}. Aquí te lo dejo:`, "", link, "");
     if(where) L.push(`Lo ideal es ponerlo ${where}.`, "");
   } else if(where) L.push(`Os pasamos el enlace de entradas para ponerlo ${where}.`, "");
-  if(has("video")) L.push(`Lo que más nos urge es un reel (vídeo vertical) para los anuncios. Mejor sin música de Instagram, que la ponemos nosotros${has("ads")?", y con vuestro permiso para usarlo en anuncios":""}.`, "");
-  else if(has("ads")) L.push("Y vuestro permiso para usar vuestras publicaciones en anuncios (en Instagram: Configuración > Contenido de marca).", "");
+  if(has("video")) L.push(`Lo que más nos urge es un reel (vídeo vertical) para los anuncios. Mejor sin música de Instagram, que la ponemos nosotros, y con vuestro permiso para usarlo en anuncios.`, "");
   const extra = [has("cartel")&&"el cartel en JPG, mejor en vertical 4:5", has("fotos")&&"fotos en alta calidad y un texto corto de presentación", has("stats")&&"una captura de las estadísticas de público de Instagram (Panel > Público > Ciudades)"].filter(Boolean);
   if(extra.length) L.push("Si nos podéis pasar también:", ...extra.map(x=>"· "+x.charAt(0).toUpperCase()+x.slice(1)), "");
   L.push("Gracias!!");
@@ -804,7 +801,7 @@ function openReq(s){
     s = showById(S.fShow) || sortedShows().find(x=>x.date && x.date>=t) || sortedShows()[0];
     if(!s) return;
   }
-  R = {show:s, role:"artista", picked:new Set(["reels","colab","stories","bio","video","ads"]), edited:false};
+  R = {show:s, role:"artista", picked:new Set(["reels","colab","stories","bio","video"]), edited:false};
   $("#rTitle").textContent = "Pedir al artista";
   fillSelect($("#rShow"), sortedShows().map(x=>[x.id, x.name + (x.date ? " · " + fmtDay(x.date) : "")]), s.id);
   $("#rRole").value = "artista"; $("#rName").value = ""; $("#rPhone").value = ""; $("#rLink").value = "";
