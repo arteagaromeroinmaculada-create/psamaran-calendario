@@ -727,7 +727,7 @@ const ASKS = [
     txt:(c,d)=>`Stories con el enlace de entradas: una al anunciarlo (${d[0]}), otra la semana de la función (${d[1]}) y otra el mismo día (${d[2]})`},
   {g:"Redes", k:"bio", label:"Enlace de entradas en la biografía", type:"tarea", off:[[-16,"Enlace en la biografía"]],
     txt:(c,d)=>`Poner el enlace de entradas en ${c.su_s} biografía desde el ${d[0].replace(/^el /,"")} hasta la función`},
-  {g:"Permisos", k:"ads", label:"Permiso para anuncios de colaboración", hint:"Promocionar su publicación desde su perfil", type:"tarea", soon:true,
+  {g:"Permisos", k:"ads", label:"Permiso para usar su vídeo en anuncios", hint:"El anuncio puede salir con su nombre", type:"tarea", soon:true,
     txt:c=>`Activar el permiso de anuncios de colaboración (Instagram: Configuración > Contenido de marca) para que podamos promocionar ${c.su_s} publicación desde ${c.su_s} perfil`},
 ];
 const addDays = (s,n) => { const d = parse(s); d.setDate(d.getDate()+n); return iso(d); };
