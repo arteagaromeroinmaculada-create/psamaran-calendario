@@ -613,7 +613,9 @@ async function openItem(e){
   $("#iAttBtn").hidden = !writable; $("#iAttMsg").textContent = "";
   renderAtts(writable);
   $("#dlgItem").showModal();
-  if(e?.updatedBy && S.user){ const ps = await S.user.profiles([e.updatedBy]); const n = ps[e.updatedBy]?.name; if(n && e.updatedAt) $("#iWho").textContent = `Último cambio: ${n}, ${fmtDay(e.updatedAt.slice(0,10))}`; }
+  // Solo el nombre puesto en Equipo, nunca el email
+  const n = e?.updatedBy && (S.people[e.updatedBy]?.name||"").trim();
+  if(n && e.updatedAt) $("#iWho").textContent = `Último cambio: ${n}, ${fmtDay(e.updatedAt.slice(0,10))}`;
 }
 $("#iCancel").onclick = async () => {
   $("#dlgItem").close();
