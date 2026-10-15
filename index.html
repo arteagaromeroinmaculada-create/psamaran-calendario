@@ -313,7 +313,7 @@ img{max-width:100%}
           <label class="fld"><span>Nombre</span><input id="rName" maxlength="60" required placeholder="Nombre"></label>
         </div>
         <div class="two">
-          <label class="fld"><span>Instagram a etiquetar</span><input id="rFrom" maxlength="60" value="@tomaplanazostribu"></label>
+          <label class="fld"><span>Instagram a etiquetar</span><input id="rFrom" maxlength="120" value="@tomaplanazos @salatabor"></label>
           <label class="fld"><span>Móvil (opcional)</span><input id="rPhone" inputmode="tel" maxlength="20" placeholder="+34 600 000 000"></label>
         </div>
         <label class="fld"><span>Su enlace de entradas (opcional)</span><input id="rLink" maxlength="300" placeholder="Enlace de entradas"></label>
@@ -751,7 +751,8 @@ function reqPlan(){
 
 function reqMessage(p){
   const s = R.show, has = k => R.picked.has(k);
-  const tag = "@" + ($("#rFrom").value.trim() || "tomaplanazostribu").replace(/^@+/,"");
+  const tags = ($("#rFrom").value.trim() || "@tomaplanazos @salatabor").split(/[\s,;]+|\by\b/).filter(Boolean).map(t=>"@"+t.replace(/^@+/,""));
+  const tag = tags.length>1 ? tags.slice(0,-1).join(", ")+" y "+tags.at(-1) : tags[0];
   const DOWL = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
   const fday = x => { const d = parse(x); return `${DOWL[(d.getDay()+6)%7]} ${d.getDate()} ${MON[d.getMonth()]}`; };
   const slot = o => s.date ? fday(maxIso(todayIso(), addDays(s.date,o))) : "fecha por cerrar";
