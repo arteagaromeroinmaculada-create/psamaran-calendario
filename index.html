@@ -706,7 +706,10 @@ $("#iFile").addEventListener("change", async ev=>{
     const safe = f.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\w.\-]+/g,"_").slice(-80);
     const path = `items/${A.id}/${Date.now()}-${safe}`;
     const {error} = await SB.storage.from(BUCKET).upload(path, f, {contentType: f.type || "application/octet-stream", upsert:false});
-    if(error){ console.warn("Subida:", error); fails.push(f.name); continue; }
+    if(error){ console.warn("Subida:", error);
+      const m = String(error.message||error.error||"");
+      fails.push(/bucket not found/i.test(m) ? `${f.name} (falta preparar los adjuntos en Supabase: ejecuta supabase-adjuntos.sql)` : /row-level security|unauthorized|403/i.test(m) ? `${f.name} (sin permiso: ejecuta supabase-adjuntos.sql en Supabase)` : /exceeded|too large|413/i.test(m) ? `${f.name} (demasiado grande)` : `${f.name} (${m||"error desconocido"})`);
+      continue; }
     A.atts.push({path, name:f.name, size:f.size, type:f.type||"", by:S.uid, at:new Date().toISOString()});
     if(!A.existing) A.uploadedNew.push(path);
   }
