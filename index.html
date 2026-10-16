@@ -317,7 +317,7 @@ img{max-width:100%}
     <div class="reqgrid">
       <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
         <div class="two">
-          <label class="fld"><span>A quién escribes</span><select id="rRole"><option value="artista">Al artista</option><option value="rep">A su representante</option></select></label>
+          <label class="fld"><span>A quién escribes</span><select id="rRole"><option value="artista">Al artista</option><option value="artistas">A los artistas</option><option value="rep">A su representante</option></select></label>
           <label class="fld"><span>Nombre</span><input id="rName" maxlength="60" required placeholder="Nombre"></label>
         </div>
         <div class="two">
@@ -765,7 +765,7 @@ const ASKS = [
     txt:c=>`Una captura de ${c.su} estadísticas de público en Instagram (Panel > Público > Ciudades), para saber cuánta gente ${c.tiene} en Madrid`},
   {g:"Redes", k:"colab", label:"Publicación colaborativa en Instagram", hint:"La hacen ellos y nos invitan; sale en los dos perfiles", type:"publicacion", off:[[-16,"Publicación colaborativa"]],
     txt:(c,d)=>`Publicación colaborativa (${d[0]})`},
-  {g:"Redes", k:"reels", label:"3 vídeos promocionales", hint:"Invitación, fragmento y cuenta atrás", type:"publicacion", off:[[-16,"Vídeo 1, invitación"],[-7,"Vídeo 2, fragmento"],[-2,"Vídeo 3, cuenta atrás"]],
+  {g:"Redes", k:"reels", label:"3 vídeos promocionales", hint:"Grabados antes (los usamos en anuncios) y publicados en 3 fechas", type:"publicacion", off:[[-16,"Vídeo 1, invitación"],[-7,"Vídeo 2, fragmento"],[-2,"Vídeo 3, cuenta atrás"]],
     txt:(c,d)=>`Tres vídeos cortos en vertical: una invitación contando qué es, fecha y sitio (${d[0]}), un fragmento del espectáculo (${d[1]}) y una cuenta atrás (${d[2]})`},
   {g:"Redes", k:"stories", label:"Stories con enlace de entradas", hint:"Cada reel también en stories", type:"publicacion", off:[[-16,"Story con enlace (invitación)"],[-7,"Story con enlace (fragmento)"],[-2,"Story con enlace (cuenta atrás)"]],
     txt:(c,d)=>`Stories con el enlace de entradas: una al anunciarlo (${d[0]}), otra la semana de la función (${d[1]}) y otra el mismo día (${d[2]})`},
@@ -785,6 +785,11 @@ const addDays = (s,n) => { const d = parse(s); d.setDate(d.getDate()+n); return 
 const maxIso = (a,b) => a>b ? a : b;
 let R = null;
 
+// Los 3 vídeos se graban antes: plazo de entrega unos días antes del primer reel
+function recDeadline(s){
+  const t = todayIso(), min = addDays(t,2);
+  return s.date ? maxIso(min, addDays(s.date,-19)) : addDays(t,5);
+}
 function reqPlan(){
   const s = R.show, t = todayIso(), soon = addDays(t,3);
   const name = $("#rName").value.trim() || (R.role==="rep" ? "representante" : (s.artist||"artista"));
@@ -795,6 +800,7 @@ function reqPlan(){
     else if(s.date) for(const [off,lbl] of a.off) entries.push({ask:a, type:a.type, date:maxIso(t, addDays(s.date,off)), title:`${s.artist||name} · ${lbl}`});
     else entries.push({ask:a, type:a.type, date:soon, title:`${s.artist||name} · ${a.label}`, nodate:true});
   }
+  if(R.picked.has("reels")) entries.push({type:"material", date:recDeadline(s), title:`${s.artist||name} · Recibir los 3 vídeos grabados (para anuncios)`});
   const follow = [];
   if(picked.length) follow.push({type:"tarea", date:addDays(t,2), title:`Seguimiento: ¿ha contestado ${name}?`});
   if(picked.some(a=>a.soon)) follow.push({type:"tarea", date:soon, title:`Comprobar que ha llegado lo pedido a ${name}`});
@@ -803,7 +809,16 @@ function reqPlan(){
 }
 
 function reqMessage(p){
-  const s = R.show, has = k => R.picked.has(k);
+  const s = R.show, has = k => R.picked.has(k), role = R.role;
+  const art = s.artist || "el artista";
+  // Formas según a quién se escribe: al artista (tú), a los artistas (vosotros) o a su representante (tú, y el artista en tercera)
+  const G = {
+    artista:  {te:"Te", te_:"te", tu:"tu", grabe:"grabes", mande:"nos los mandes", publique:"publícalos", haga:"hagas", comparta:"compartas", puede:"puedes", share:"Comparte también cada reel en stories"},
+    artistas: {te:"Os", te_:"os", tu:"vuestro", grabe:"grabéis", mande:"nos los mandéis", publique:"publicadlos", haga:"hagáis", comparta:"compartáis", puede:"podéis", share:"Compartid también cada reel en stories"},
+    rep:      {te:"Te", te_:"te", tu:"su", grabe:"", mande:"nos los hagáis llegar", publique:"que los publique", haga:"", comparta:"", puede:"puedes", share:`Y que comparta también cada reel en stories`},
+  };
+  const g = G[role] || G.artista;
+  const isRep = role==="rep";
   const tags = [$("#rTagBrand").checked && BRAND_IG, $("#rTagSala").checked && $("#rSalaIg").value.trim()].filter(Boolean).map(t=>"@"+t.replace(/^@+/,""));
   const tag = tags.length>1 ? tags.slice(0,-1).join(", ")+" y "+tags.at(-1) : tags[0];
   const DOWL = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
@@ -811,26 +826,31 @@ function reqMessage(p){
   const slot = o => s.date ? fday(maxIso(todayIso(), addDays(s.date,o))) : "fecha por cerrar";
   const when = s.date ? ` del día ${parse(s.date).getDate()} de ${MONL[parse(s.date).getMonth()]}` : "";
   const L = ["Hola!", "", `Nos piden desde marketing para el evento${when}${s.time?` a las ${s.time}h`:""} de ${s.name}:`, ""];
+  const how = tag ? `${has("colab")?"como publicación colaborativa o etiquetando":"etiquetando"} a ${tag}` : has("colab") ? "como publicación colaborativa" : "";
   if(has("reels")){
-    let t = `Promocionar el espectáculo con 3 vídeos promocionales. Os pediríamos que sean reels en su Instagram${tag ? `, ${has("colab")?"como publicación colaborativa o etiquetando":"etiquetando"} a ${tag}` : has("colab") ? ", como publicación colaborativa" : ""}.`;
-    if(has("stories")) t += " Que cada reel lo comparta también en stories con el enlace de entradas.";
-    L.push(t, "", "Esta es la estructura y el calendario que proponemos:", "",
-      `1 · Invitación, ${slot(-16)}: a cámara contando qué es el espectáculo, fecha, hora y sala.`, "",
+    L.push("Promocionar el espectáculo con 3 vídeos en formato reel (vertical).", "");
+    L.push(isRep
+      ? `${g.te} pediríamos que ${art} grabe los 3 vídeos con antelación y ${g.mande} antes del ${fday(recDeadline(s))}. Los usaremos también para los anuncios, así que mejor sin música de Instagram, que la ponemos nosotros.`
+      : `${g.te} pediríamos que ${g.grabe} los 3 vídeos con antelación y ${g.mande} antes del ${fday(recDeadline(s))}. Los usaremos también para los anuncios, así que mejor sin música de Instagram, que la ponemos nosotros.`, "");
+    let t = isRep ? `Después, que los publique como reel en su Instagram en estas fechas` : `Después, ${g.publique} como reel en ${g.tu} Instagram en estas fechas`;
+    t += how ? `, ${how}.` : ".";
+    if(has("stories")) t += ` ${g.share} con el enlace de entradas.`;
+    L.push(t, "", "1 · Invitación, " + slot(-16) + ": a cámara contando qué es el espectáculo, fecha, hora y sala.", "",
       `2 · Fragmento, ${slot(-7)}: un trozo del espectáculo que enganche.`, "",
       `3 · Cuenta atrás, ${slot(-2)}: “Esta semana nos vemos en Pozuelo”, con el recordatorio de fecha y hora.`, "");
   } else {
-    if(has("colab")) L.push(`Que hagáis una publicación colaborativa en Instagram (${slot(-16)})${tag?` invitando a ${tag}`:""}, para que salga en los perfiles de todos.`, "");
-    if(has("stories")) L.push(`Que compartáis stories con el enlace de entradas: ${slot(-16)}, ${slot(-7)} y ${slot(-2)}.`, "");
+    if(has("colab")) L.push(`${isRep ? `Que ${art} haga` : "Que "+g.haga} una publicación colaborativa en Instagram (${slot(-16)})${tag?` invitando a ${tag}`:""}, para que salga en los perfiles de todos.`, "");
+    if(has("stories")) L.push(`${isRep ? `Que ${art} comparta` : "Que "+g.comparta} stories con el enlace de entradas: ${slot(-16)}, ${slot(-7)} y ${slot(-2)}.`, "");
   }
   const link = $("#rLink").value.trim();
   const where = [has("bio")&&"en la bio", has("stories")&&"en el sticker de enlace de las stories"].filter(Boolean).join(" y ");
   if(link){
-    L.push(`Las entradas ya están ${/soundtix/i.test(link)?"en Soundtix (nuestro canal principal)":"a la venta"}. Aquí te lo dejo:`, "", link, "");
+    L.push(`Las entradas ya están ${/soundtix/i.test(link)?"en Soundtix (nuestro canal principal)":"a la venta"}. Aquí ${g.te_} lo dejo:`, "", link, "");
     if(where) L.push(`Lo ideal es ponerlo ${where}.`, "");
-  } else if(where) L.push(`Os pasamos el enlace de entradas para ponerlo ${where}.`, "");
-  if(has("video")) L.push(`Lo que más nos urge es un reel (vídeo vertical) para los anuncios. Mejor sin música de Instagram, que la ponemos nosotros, y con vuestro permiso para usarlo en anuncios.`, "");
+  } else if(where) L.push(`${g.te} pasamos el enlace de entradas para ponerlo ${where}.`, "");
+  if(has("video") && !has("reels")) L.push("Lo que más nos urge es un vídeo vertical para los anuncios. Mejor sin música de Instagram, que la ponemos nosotros.", "");
   const extra = [has("cartel")&&"el cartel en JPG, mejor en vertical 4:5", has("fotos")&&"fotos en alta calidad y un texto corto de presentación", has("stats")&&"una captura de las estadísticas de público de Instagram (Panel > Público > Ciudades)"].filter(Boolean);
-  if(extra.length) L.push("Si nos podéis pasar también:", ...extra.map(x=>"· "+x.charAt(0).toUpperCase()+x.slice(1)), "");
+  if(extra.length) L.push(`Si nos ${g.puede} pasar también:`, ...extra.map(x=>"· "+x.charAt(0).toUpperCase()+x.slice(1)), "");
   L.push("Gracias!!");
   return L.join("\n");
 }
@@ -855,10 +875,10 @@ function openReq(s){
     s = showById(S.fShow) || sortedShows().find(x=>x.date && x.date>=t) || sortedShows()[0];
     if(!s) return;
   }
-  R = {show:s, role:"artista", picked:new Set(["reels","colab","stories","bio","video"]), edited:false};
+  R = {show:s, role:"artista", picked:new Set(["reels","colab","stories","bio"]), edited:false};
   $("#rTitle").textContent = "Pedir al artista";
   fillSelect($("#rShow"), sortedShows().map(x=>[x.id, x.name + (x.date ? " · " + fmtDay(x.date) : "")]), s.id);
-  $("#rRole").value = "artista"; $("#rName").value = ""; $("#rTagBrand").checked = true; $("#rTagSala").checked = true; $("#rSalaIg").value = venueIg(s); $("#rPhone").value = ""; $("#rLink").value = "";
+  $("#rRole").value = "artista"; $("#rName").value = ""; $("#rTagBrand").checked = true; $("#rRole").value = "artista"; $("#rTagSala").checked = true; $("#rSalaIg").value = venueIg(s); $("#rPhone").value = ""; $("#rLink").value = "";
   $("#rMsg").value = ""; $("#rErr").hidden = true; $("#rCopied").hidden = true;
   const box = $("#rAsks"); box.replaceChildren(); let g = "";
   for(const a of ASKS){
