@@ -903,7 +903,7 @@ $("#formShow").addEventListener("submit", async ev=>{
   try{
     if(S.editingShow){
       const old = S.editingShow;
-      await S.db.collection("shows").doc(old.id).set({...body, promoCreated: old.promoCreated || false});
+      await S.db.collection("shows").doc(old.id).set({...body, ...Object.fromEntries(["promoCreated","promoV3","promoFix1","promoBrand"].map(k=>[k, old[k] || false]))});
       // Si cambia la fecha, todo lo de ese espectáculo que no esté hecho se mueve los mismos días
       if(old.date && body.date && old.date!==body.date){
         const delta = Math.round((parse(body.date) - parse(old.date)) / 864e5);
@@ -1004,16 +1004,23 @@ async function ensurePromos(){
     }
     S.db.collection("shows").doc(sh.id).update({promoFix1:true}).catch(()=>{});
   }
+  // 19 oct (Inma): las 3 fichas de Tomaplanazos también en los espectáculos que ya existían. Solo se añaden, no se toca nada más.
+  const brandTodo = S.shows.filter(s=>s.date && s.date>=t && s.promoCreated && !s.promoBrand);
   const todo = S.shows.filter(s=>s.date && s.date>=t && !s.promoCreated);
-  if(!todo.length) return;
+  if(!todo.length && !brandTodo.length) return;
   promoBusy = true;
   try{
+    for(const s of brandTodo){
+      for(const e of promoEntries(s).filter(e=>e.brand)) if(!S.items.some(i=>i.id===e.id))
+        await S.db.collection("items").doc(e.id).set({type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente", owner:"", notes:"", updatedBy:S.uid, updatedAt:new Date().toISOString()});
+      await S.db.collection("shows").doc(s.id).update({promoBrand:true});
+    }
     for(const s of todo){
       // Si ya se pidió con «Pedir al artista» antes de esto, no se duplica
       const old = S.items.some(i=>i.show===s.id && /Vídeo [123],/.test(i.title||""));
       for(const e of promoEntries(s)) if((e.brand || !old) && !S.items.some(i=>i.id===e.id))
         await S.db.collection("items").doc(e.id).set({type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente", owner:"", notes:"", updatedBy:S.uid, updatedAt:new Date().toISOString()});
-      await S.db.collection("shows").doc(s.id).update({promoCreated:true, promoV3:true, promoFix1:true});
+      await S.db.collection("shows").doc(s.id).update({promoCreated:true, promoV3:true, promoFix1:true, promoBrand:true});
     }
   }catch(e){ console.warn("Promo:", e); }
   finally{ promoBusy = false; }
