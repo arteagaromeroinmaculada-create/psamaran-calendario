@@ -937,13 +937,13 @@ const ASKS = [
     txt:c=>`Fotos en alta calidad y un texto corto de presentación del espectáculo`},
   {g:"Material", k:"stats", label:"Estadísticas de público de Instagram", hint:"Para saber cuánto pesa Madrid", type:"material", soon:true,
     txt:c=>`Una captura de ${c.su} estadísticas de público en Instagram (Panel > Público > Ciudades), para saber cuánta gente ${c.tiene} en Madrid`},
-  {g:"Redes", k:"colab", label:"Publicación colaborativa en Instagram", hint:"La hacen ellos y nos invitan; sale en los dos perfiles", type:"publicacion", off:[[-16,"Publicación colaborativa"]],
+  {g:"Redes", k:"colab", label:"Publicación colaborativa en Instagram", hint:"La hacen ellos y nos invitan; sale en los dos perfiles", type:"publicacion", off:[[-21,"Publicación colaborativa"]],
     txt:(c,d)=>`Publicación colaborativa (${d[0]})`},
-  {g:"Redes", k:"reels", label:"3 vídeos promocionales", hint:"Grabados antes (los usamos en anuncios) y publicados en 3 fechas", type:"publicacion", off:[[-16,"Vídeo 1, invitación"],[-7,"Vídeo 2, fragmento"],[-2,"Vídeo 3, cuenta atrás"]],
+  {g:"Redes", k:"reels", label:"3 vídeos promocionales", hint:"Grabados antes (los usamos en anuncios) y publicados en 3 fechas", type:"publicacion", off:[[-21,"Vídeo 1, invitación"],[-10,"Vídeo 2, fragmento"],[-2,"Vídeo 3, cuenta atrás"]],
     txt:(c,d)=>`Tres vídeos cortos en vertical: una invitación contando qué es, fecha y sitio (${d[0]}), un fragmento del espectáculo (${d[1]}) y una cuenta atrás (${d[2]})`},
-  {g:"Redes", k:"stories", label:"Stories con enlace de entradas", hint:"Cada reel también en stories", type:"publicacion", off:[[-16,"Story con enlace (invitación)"],[-7,"Story con enlace (fragmento)"],[-2,"Story con enlace (cuenta atrás)"]],
+  {g:"Redes", k:"stories", label:"Stories con enlace de entradas", hint:"Cada reel también en stories", type:"publicacion", off:[[-21,"Story con enlace (invitación)"],[-10,"Story con enlace (fragmento)"],[-2,"Story con enlace (cuenta atrás)"]],
     txt:(c,d)=>`Stories con el enlace de entradas: una al anunciarlo (${d[0]}), otra la semana de la función (${d[1]}) y otra el mismo día (${d[2]})`},
-  {g:"Redes", k:"bio", label:"Enlace de entradas en la biografía", type:"tarea", off:[[-16,"Enlace en la biografía"]],
+  {g:"Redes", k:"bio", label:"Enlace de entradas en la biografía", type:"tarea", off:[[-21,"Enlace en la biografía"]],
     txt:(c,d)=>`Poner el enlace de entradas en ${c.su_s} biografía desde el ${d[0].replace(/^el /,"")} hasta la función`},
 ];
 const BRAND_IG = "@tomaplanazostribu";
@@ -962,8 +962,8 @@ let R = null;
 // Promo que el artista hace en cada espectáculo: se apunta sola en el calendario (ids fijos, sin duplicados)
 const PROMO = [
   {k:"rec", type:"material", title:"Recibir los 3 reels grabados (para anuncios)"},
-  {k:"r1", type:"publicacion", off:-16, title:"Reel 1 · Invitación: a cámara, qué es, fecha, hora y sala (+ stories con enlace)"},
-  {k:"r2", type:"publicacion", off:-7, title:"Reel 2 · Fragmento del espectáculo que enganche (+ stories con enlace)"},
+  {k:"r1", type:"publicacion", off:-21, title:"Reel 1 · Invitación: a cámara, qué es, fecha, hora y sala (+ stories con enlace)"},
+  {k:"r2", type:"publicacion", off:-10, title:"Reel 2 · Fragmento del espectáculo que enganche (+ stories con enlace)"},
   {k:"r3", type:"publicacion", off:-2, title:"Reel 3 · Cuenta atrás: «Esta semana nos vemos en Pozuelo» (+ stories con enlace)"},
 ];
 const promoId = (s,k) => `promo-${s.id}-${k}`;
@@ -974,6 +974,16 @@ let promoBusy = false;
 async function ensurePromos(){
   if(promoBusy || !S.loaded.items || !S.loaded.shows || S.canWrite===false || S.readOnly) return;
   const t = todayIso();
+  // 19 oct: la promo pasó de 19/16/7 días antes a 30/21/10; se mueven las fichas pendientes que seguían en la fecha antigua
+  for(const sh of S.shows.filter(x=>x.date && x.promoCreated && !x.promoV2)){
+    const oldOff = {rec:-19, r1:-16, r2:-7};
+    for(const pr of PROMO.filter(pr=>oldOff[pr.k])){
+      const it = S.items.find(i=>i.id===promoId(sh,pr.k));
+      const was = maxIso(pr.k==="rec" ? addDays(t,2) : t, addDays(sh.date, oldOff[pr.k]));
+      if(it && it.status==="pendiente" && it.date===was) S.db.collection("items").doc(it.id).update({date:promoDate(sh,pr)}).catch(()=>{});
+    }
+    S.db.collection("shows").doc(sh.id).update({promoV2:true}).catch(()=>{});
+  }
   const todo = S.shows.filter(s=>s.date && s.date>=t && !s.promoCreated);
   if(!todo.length) return;
   promoBusy = true;
@@ -983,7 +993,7 @@ async function ensurePromos(){
       const old = S.items.some(i=>i.show===s.id && /Vídeo [123],/.test(i.title||""));
       if(!old) for(const e of promoEntries(s)) if(!S.items.some(i=>i.id===e.id))
         await S.db.collection("items").doc(e.id).set({type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente", owner:"", notes:"", updatedBy:S.uid, updatedAt:new Date().toISOString()});
-      await S.db.collection("shows").doc(s.id).update({promoCreated:true});
+      await S.db.collection("shows").doc(s.id).update({promoCreated:true, promoV2:true});
     }
   }catch(e){ console.warn("Promo:", e); }
   finally{ promoBusy = false; }
@@ -991,7 +1001,7 @@ async function ensurePromos(){
 // Los 3 vídeos se graban antes: plazo de entrega unos días antes del primer reel
 function recDeadline(s){
   const t = todayIso(), min = addDays(t,2);
-  return s.date ? maxIso(min, addDays(s.date,-19)) : addDays(t,5);
+  return s.date ? maxIso(min, addDays(s.date,-30)) : addDays(t,5);
 }
 function reqPlan(){
   const s = R.show, t = todayIso(), soon = addDays(t,3);
@@ -1040,12 +1050,12 @@ function reqMessage(p){
     let t = isRep ? `Después, que los publique como reel en su Instagram en estas fechas` : `Después, ${g.publique} como reel en ${g.tu} Instagram en estas fechas`;
     t += how ? `, ${how}.` : ".";
     if(has("stories")) t += ` ${g.share} con el enlace de entradas.`;
-    L.push(t, "", "1 · Invitación, " + slot(-16) + ": a cámara contando qué es el espectáculo, fecha, hora y sala.", "",
-      `2 · Fragmento, ${slot(-7)}: un trozo del espectáculo que enganche.`, "",
+    L.push(t, "", "1 · Invitación, " + slot(-21) + ": a cámara contando qué es el espectáculo, fecha, hora y sala.", "",
+      `2 · Fragmento, ${slot(-10)}: un trozo del espectáculo que enganche.`, "",
       `3 · Cuenta atrás, ${slot(-2)}: “Esta semana nos vemos en Pozuelo”, con el recordatorio de fecha y hora.`, "");
   } else {
-    if(has("colab")) L.push(`${isRep ? `Que ${art} haga` : "Que "+g.haga} una publicación colaborativa en Instagram (${slot(-16)})${tag?` invitando a ${tag}`:""}, para que salga en los perfiles de todos.`, "");
-    if(has("stories")) L.push(`${isRep ? `Que ${art} comparta` : "Que "+g.comparta} stories con el enlace de entradas: ${slot(-16)}, ${slot(-7)} y ${slot(-2)}.`, "");
+    if(has("colab")) L.push(`${isRep ? `Que ${art} haga` : "Que "+g.haga} una publicación colaborativa en Instagram (${slot(-21)})${tag?` invitando a ${tag}`:""}, para que salga en los perfiles de todos.`, "");
+    if(has("stories")) L.push(`${isRep ? `Que ${art} comparta` : "Que "+g.comparta} stories con el enlace de entradas: ${slot(-21)}, ${slot(-10)} y ${slot(-2)}.`, "");
   }
   const link = $("#rLink").value.trim();
   const where = [has("bio")&&"en la bio", has("stories")&&"en el sticker de enlace de las stories"].filter(Boolean).join(" y ");
