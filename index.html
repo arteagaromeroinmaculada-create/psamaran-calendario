@@ -974,15 +974,17 @@ let promoBusy = false;
 async function ensurePromos(){
   if(promoBusy || !S.loaded.items || !S.loaded.shows || S.canWrite===false || S.readOnly) return;
   const t = todayIso();
-  // 19 oct: la promo pasó de 19/16/7 días antes a 30/21/10; se mueven las fichas pendientes que seguían en la fecha antigua
-  for(const sh of S.shows.filter(x=>x.date && x.promoCreated && !x.promoV2)){
-    const oldOff = {rec:-19, r1:-16, r2:-7};
+  // 19 oct: las fichas creadas antes del cambio a 30/21/10 días se quedan con su fecha original (lo pidió Inma).
+  // Si alguna llegó a moverse, vuelve a la fecha con la que se creó.
+  for(const sh of S.shows.filter(x=>x.date && x.promoCreated && !x.promoV3)){
+    const oldOff = {rec:-19, r1:-16, r2:-7}, made = "2026-10-19";
     for(const pr of PROMO.filter(pr=>oldOff[pr.k])){
       const it = S.items.find(i=>i.id===promoId(sh,pr.k));
-      const was = maxIso(pr.k==="rec" ? addDays(t,2) : t, addDays(sh.date, oldOff[pr.k]));
-      if(it && it.status==="pendiente" && it.date===was) S.db.collection("items").doc(it.id).update({date:promoDate(sh,pr)}).catch(()=>{});
+      if(!it || it.status!=="pendiente" || !(it.updatedAt < "2026-10-19T08:11:50Z")) continue;
+      const orig = maxIso(pr.k==="rec" ? addDays(made,2) : made, addDays(sh.date, oldOff[pr.k]));
+      if(it.date===promoDate(sh,pr) && it.date!==orig) S.db.collection("items").doc(it.id).update({date:orig}).catch(()=>{});
     }
-    S.db.collection("shows").doc(sh.id).update({promoV2:true}).catch(()=>{});
+    S.db.collection("shows").doc(sh.id).update({promoV3:true}).catch(()=>{});
   }
   const todo = S.shows.filter(s=>s.date && s.date>=t && !s.promoCreated);
   if(!todo.length) return;
@@ -993,7 +995,7 @@ async function ensurePromos(){
       const old = S.items.some(i=>i.show===s.id && /Vídeo [123],/.test(i.title||""));
       if(!old) for(const e of promoEntries(s)) if(!S.items.some(i=>i.id===e.id))
         await S.db.collection("items").doc(e.id).set({type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente", owner:"", notes:"", updatedBy:S.uid, updatedAt:new Date().toISOString()});
-      await S.db.collection("shows").doc(s.id).update({promoCreated:true, promoV2:true});
+      await S.db.collection("shows").doc(s.id).update({promoCreated:true, promoV3:true});
     }
   }catch(e){ console.warn("Promo:", e); }
   finally{ promoBusy = false; }
