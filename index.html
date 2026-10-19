@@ -962,13 +962,17 @@ let R = null;
 // Promo que el artista hace en cada espectáculo: se apunta sola en el calendario (ids fijos, sin duplicados)
 const PROMO = [
   {k:"rec", type:"material", title:"Recibir los 3 reels grabados (para anuncios)"},
-  {k:"r1", type:"publicacion", off:-21, title:"Reel 1 · Invitación: a cámara, qué es, fecha, hora y sala (+ stories con enlace)"},
-  {k:"r2", type:"publicacion", off:-10, title:"Reel 2 · Fragmento del espectáculo que enganche (+ stories con enlace)"},
-  {k:"r3", type:"publicacion", off:-2, title:"Reel 3 · Cuenta atrás: «Esta semana nos vemos en Pozuelo» (+ stories con enlace)"},
+  {k:"r1", type:"publicacion", off:-21, title:"Reel 1 · Invitación: a cámara, qué es, fecha, hora y sala (+ stories con enlace) · Compártelo en nuestras stories"},
+  {k:"r2", type:"publicacion", off:-10, title:"Reel 2 · Fragmento del espectáculo que enganche (+ stories con enlace) · Compártelo en nuestras stories"},
+  {k:"r3", type:"publicacion", off:-2, title:"Reel 3 · Cuenta atrás: «Esta semana nos vemos en Pozuelo» (+ stories con enlace) · Compártelo en nuestras stories"},
+  // Lo que publicamos nosotros desde @tomaplanazostribu (19 oct, Inma)
+  {k:"b1", brand:true, type:"publicacion", off:-30, title:"Post anuncio con el cartel (colaborativo con la sala y el artista)"},
+  {k:"b2", brand:true, type:"publicacion", off:-5, title:"Story recordatorio con enlace"},
+  {k:"b3", brand:true, type:"publicacion", off:0, title:"Story del día «hoy en Pozuelo» con enlace"},
 ];
 const promoId = (s,k) => `promo-${s.id}-${k}`;
-const promoDate = (s,pr) => pr.k==="rec" ? recDeadline(s) : pr.k==="r1" ? inviteDate(s) : maxIso(inviteDate(s), addDays(s.date, pr.off));
-const promoEntries = s => PROMO.map(pr=>({id:promoId(s,pr.k), type:pr.type, date:promoDate(s,pr), title:`${s.artist||s.name} · ${pr.title}`}));
+const promoDate = (s,pr) => pr.brand ? maxIso(todayIso(), addDays(s.date, pr.off)) : pr.k==="rec" ? recDeadline(s) : pr.k==="r1" ? inviteDate(s) : maxIso(inviteDate(s), addDays(s.date, pr.off));
+const promoEntries = s => PROMO.map(pr=>({id:promoId(s,pr.k), brand:!!pr.brand, type:pr.type, date:promoDate(s,pr), title: pr.brand ? `Tomaplanazos · ${pr.title} · ${s.name}` : `${s.artist||s.name} · ${pr.title}`}));
 // Espectáculos con fecha futura que aún no tienen su promo: se crea una vez (si alguien borra una, no vuelve)
 let promoBusy = false;
 async function ensurePromos(){
@@ -1007,7 +1011,7 @@ async function ensurePromos(){
     for(const s of todo){
       // Si ya se pidió con «Pedir al artista» antes de esto, no se duplica
       const old = S.items.some(i=>i.show===s.id && /Vídeo [123],/.test(i.title||""));
-      if(!old) for(const e of promoEntries(s)) if(!S.items.some(i=>i.id===e.id))
+      for(const e of promoEntries(s)) if((e.brand || !old) && !S.items.some(i=>i.id===e.id))
         await S.db.collection("items").doc(e.id).set({type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente", owner:"", notes:"", updatedBy:S.uid, updatedAt:new Date().toISOString()});
       await S.db.collection("shows").doc(s.id).update({promoCreated:true, promoV3:true, promoFix1:true});
     }
@@ -1034,7 +1038,7 @@ function reqPlan(){
   const entries = [];
   for(const a of picked){
     if(a.k==="stories" && R.picked.has("reels")) continue; // las stories van con cada reel
-    if(a.k==="reels" && s.date){ for(const e of promoEntries(s)) if(!S.items.some(i=>i.id===e.id)) entries.push({...e, ask:a}); continue; }
+    if(a.k==="reels" && s.date){ for(const e of promoEntries(s).filter(e=>!e.brand)) if(!S.items.some(i=>i.id===e.id)) entries.push({...e, ask:a}); continue; }
     if(a.soon) entries.push({ask:a, type:a.type, date:soon, title:`${s.artist||name} · ${a.label}`});
     else if(s.date) for(const [off,lbl] of a.off) entries.push({ask:a, type:a.type, date:maxIso(t, addDays(s.date,off)), title:`${s.artist||name} · ${lbl}`});
     else entries.push({ask:a, type:a.type, date:soon, title:`${s.artist||name} · ${a.label}`, nodate:true});
