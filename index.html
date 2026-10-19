@@ -967,7 +967,7 @@ const PROMO = [
   {k:"r3", type:"publicacion", off:-2, title:"Reel 3 · Cuenta atrás: «Esta semana nos vemos en Pozuelo» (+ stories con enlace)"},
 ];
 const promoId = (s,k) => `promo-${s.id}-${k}`;
-const promoDate = (s,pr) => pr.k==="rec" ? recDeadline(s) : maxIso(todayIso(), addDays(s.date, pr.off));
+const promoDate = (s,pr) => pr.k==="rec" ? recDeadline(s) : pr.k==="r1" ? inviteDate(s) : maxIso(inviteDate(s), addDays(s.date, pr.off));
 const promoEntries = s => PROMO.map(pr=>({id:promoId(s,pr.k), type:pr.type, date:promoDate(s,pr), title:`${s.artist||s.name} · ${pr.title}`}));
 // Espectáculos con fecha futura que aún no tienen su promo: se crea una vez (si alguien borra una, no vuelve)
 let promoBusy = false;
@@ -1015,9 +1015,17 @@ async function ensurePromos(){
   finally{ promoBusy = false; }
 }
 // Los 3 vídeos se graban antes: plazo de entrega unos días antes del primer reel
+// Regla de Inma (19 oct): reels grabados 30 días antes; si faltan menos de 33 días, 3 días de margen desde hoy
+const daysTo = s => Math.round((parse(s.date) - parse(todayIso())) / 864e5);
 function recDeadline(s){
-  const t = todayIso(), min = addDays(t,2);
-  return s.date ? maxIso(min, addDays(s.date,-30)) : addDays(t,5);
+  const t = todayIso();
+  if(!s.date) return addDays(t,5);
+  return daysTo(s) < 33 ? addDays(t,3) : addDays(s.date,-30);
+}
+// Reel 1, 21 días antes; si faltan menos de 21 días, 3 días desde hoy. Nunca antes de recibir los reels.
+function inviteDate(s){
+  if(daysTo(s) < 21) return addDays(todayIso(),3);
+  return maxIso(addDays(s.date,-21), recDeadline(s));
 }
 function reqPlan(){
   const s = R.show, t = todayIso(), soon = addDays(t,3);
@@ -1061,14 +1069,14 @@ function reqMessage(p){
   if(has("reels")){
     L.push("Promocionar el espectáculo con 3 vídeos en formato reel (vertical).", "");
     L.push(isRep
-      ? `${g.te} pediríamos que ${art} grabe los 3 vídeos con antelación y ${g.mande} antes del ${fday(recDeadline(s))}. Los usaremos también para los anuncios, así que mejor sin música de Instagram, que la ponemos nosotros.`
-      : `${g.te} pediríamos que ${g.grabe} los 3 vídeos con antelación y ${g.mande} antes del ${fday(recDeadline(s))}. Los usaremos también para los anuncios, así que mejor sin música de Instagram, que la ponemos nosotros.`, "");
+      ? `${g.te} pediríamos que ${art} grabe los 3 vídeos con antelación y ${g.mande} como máximo el ${fday(recDeadline(s))}. Los usaremos también para los anuncios, así que mejor sin música de Instagram, que la ponemos nosotros.`
+      : `${g.te} pediríamos que ${g.grabe} los 3 vídeos con antelación y ${g.mande} como máximo el ${fday(recDeadline(s))}. Los usaremos también para los anuncios, así que mejor sin música de Instagram, que la ponemos nosotros.`, "");
     let t = isRep ? `Después, que los publique como reel en su Instagram en estas fechas` : `Después, ${g.publique} como reel en ${g.tu} Instagram en estas fechas`;
     t += how ? `, ${how}.` : ".";
     if(has("stories")) t += ` ${g.share} con el enlace de entradas.`;
-    L.push(t, "", "1 · Invitación, " + slot(-21) + ": a cámara contando qué es el espectáculo, fecha, hora y sala.", "",
-      `2 · Fragmento, ${slot(-10)}: un trozo del espectáculo que enganche.`, "",
-      `3 · Cuenta atrás, ${slot(-2)}: “Esta semana nos vemos en Pozuelo”, con el recordatorio de fecha y hora.`, "");
+    L.push(t, "", "1 · Invitación, como máximo el " + (s.date ? fday(inviteDate(s)) : "fecha por cerrar") + ": a cámara contando qué es el espectáculo, fecha, hora y sala.", "",
+      `2 · Fragmento, ${s.date ? fday(promoDate(s,PROMO[2])) : "fecha por cerrar"}: un trozo del espectáculo que enganche.`, "",
+      `3 · Cuenta atrás, ${s.date ? fday(promoDate(s,PROMO[3])) : "fecha por cerrar"}: “Esta semana nos vemos en Pozuelo”, con el recordatorio de fecha y hora.`, "");
   } else {
     if(has("colab")) L.push(`${isRep ? `Que ${art} haga` : "Que "+g.haga} una publicación colaborativa en Instagram (${slot(-21)})${tag?` invitando a ${tag}`:""}, para que salga en los perfiles de todos.`, "");
     if(has("stories")) L.push(`${isRep ? `Que ${art} comparta` : "Que "+g.comparta} stories con el enlace de entradas: ${slot(-21)}, ${slot(-10)} y ${slot(-2)}.`, "");
