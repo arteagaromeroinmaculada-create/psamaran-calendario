@@ -986,6 +986,20 @@ async function ensurePromos(){
     }
     S.db.collection("shows").doc(sh.id).update({promoV3:true}).catch(()=>{});
   }
+  // Fechas ya acordadas con los artistas (19 oct, Inma): se fijan una vez en los espectáculos que ya existían
+  const AGREED = [
+    {re:/banda\s*mocosa/i, r1:"2026-10-21", r2:"2026-10-30", r3:"2026-11-04", st:"2026-11-06"},
+    {re:/ne?a?tfreaks/i,    r1:"2026-10-21", r2:"2026-10-30", r3:"2026-11-04", st:"2026-11-06"},
+    {re:/hijos/i,           r1:"2026-10-20", r2:"2026-10-29", r3:"2026-11-03", st:"2026-11-05"},
+  ];
+  for(const sh of S.shows.filter(x=>x.promoCreated && !x.promoFix1)){
+    const ag = AGREED.find(a=>a.re.test(sh.name||"") || a.re.test(sh.artist||""));
+    if(ag){
+      for(const k of ["r1","r2","r3"]){ const it = S.items.find(i=>i.id===promoId(sh,k)); if(it && it.status!=="hecho") S.db.collection("items").doc(it.id).update({date:ag[k]}).catch(()=>{}); }
+      if(!S.items.some(i=>i.id===promoId(sh,"st"))) S.db.collection("items").doc(promoId(sh,"st")).set({type:"publicacion", title:`${sh.artist||sh.name} · Story del día: «Hoy/mañana nos vemos en Pozuelo» con enlace`, show:sh.id, date:ag.st, time:"", status:"pendiente", owner:"", notes:"", updatedBy:S.uid, updatedAt:new Date().toISOString()}).catch(()=>{});
+    }
+    S.db.collection("shows").doc(sh.id).update({promoFix1:true}).catch(()=>{});
+  }
   const todo = S.shows.filter(s=>s.date && s.date>=t && !s.promoCreated);
   if(!todo.length) return;
   promoBusy = true;
@@ -995,7 +1009,7 @@ async function ensurePromos(){
       const old = S.items.some(i=>i.show===s.id && /Vídeo [123],/.test(i.title||""));
       if(!old) for(const e of promoEntries(s)) if(!S.items.some(i=>i.id===e.id))
         await S.db.collection("items").doc(e.id).set({type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente", owner:"", notes:"", updatedBy:S.uid, updatedAt:new Date().toISOString()});
-      await S.db.collection("shows").doc(s.id).update({promoCreated:true, promoV3:true});
+      await S.db.collection("shows").doc(s.id).update({promoCreated:true, promoV3:true, promoFix1:true});
     }
   }catch(e){ console.warn("Promo:", e); }
   finally{ promoBusy = false; }
