@@ -744,8 +744,11 @@ function mentionQuery(){
 function showSugg(){
   const box = $("#iSugg"), mq = mentionQuery();
   const opts = mq ? teamEmails().filter(em=>em!==String(S.uid).toLowerCase()).map(em=>({em, name:nameOf(em)})).filter(o=>o.name.toLowerCase().startsWith(mq.q) || o.em.startsWith(mq.q)) : [];
+  if(mq && S.team===null) loadTeam();
   box.replaceChildren(...opts.map((o,i)=>el("button",{type:"button",class:i===suggIdx?"on":"",onmousedown:ev=>{ ev.preventDefault(); pickSugg(o); }}, "@"+o.name)));
-  box.hidden = !opts.length; box._opts = opts;
+  // Si no hay a quién mencionar, dilo en vez de no mostrar nada
+  if(mq && !opts.length) box.append(el("span",{class:"who",style:"padding:8px 10px",text: S.team===null ? "Cargando el equipo…" : teamEmails().filter(em=>em!==String(S.uid).toLowerCase()).length ? "Nadie del equipo empieza así." : "No hay más personas en Equipo. Añádelas en la pestaña Equipo."}));
+  box.hidden = !mq; box._opts = opts;
 }
 function pickSugg(o){
   const ta = $("#iCmt"), mq = mentionQuery(); if(!mq) return;
