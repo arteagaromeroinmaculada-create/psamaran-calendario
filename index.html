@@ -166,7 +166,7 @@ dialog h2{font-family:var(--display);font-size:28px;text-transform:uppercase;mar
 .cmt small{color:var(--muted);font-size:12px;margin-left:6px}
 .cmt .at{color:var(--accent);font-weight:700}
 .cmtbox{position:relative;display:flex;flex-direction:column;gap:6px}
-.sugg{position:absolute;left:0;right:0;top:100%;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12);display:flex;flex-direction:column;max-height:200px;overflow:auto}
+.sugg{position:absolute;left:0;right:0;bottom:calc(100% + 4px);z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12);display:flex;flex-direction:column;max-height:200px;overflow:auto}
 .sugg button{border:0;background:none;text-align:left;padding:8px 10px;cursor:pointer;font:inherit}
 .sugg button:hover,.sugg button.on{background:var(--sunk)}
 .bell{position:relative;border:1px solid var(--line)!important;border-radius:999px;padding:4px 10px!important;text-decoration:none!important;color:var(--ink)!important;background:var(--surface)!important;cursor:pointer}
@@ -267,7 +267,7 @@ img{max-width:100%}
       <label class="fld"><span>Estado</span><select id="iStatus"></select></label>
       <label class="fld"><span>Quién</span><select id="iOwner"></select></label>
     </div>
-    <label class="fld"><span>Notas</span><textarea id="iNotes" rows="3" maxlength="2000"></textarea></label>
+    <textarea id="iNotes" hidden></textarea>
     <div class="fld"><span>Adjuntos</span>
       <div class="atts" id="iAtts"></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -279,8 +279,10 @@ img{max-width:100%}
     <div class="fld" id="iCmtFld"><span>Comentarios</span>
       <div class="cmts" id="iCmts"></div>
       <div class="cmtbox">
-        <textarea id="iCmt" rows="2" maxlength="2000" placeholder="Escribe un comentario. Con @ avisas a alguien del equipo."></textarea>
-        <div class="sugg" id="iSugg" hidden></div>
+        <div style="position:relative">
+          <div class="sugg" id="iSugg" hidden></div>
+          <textarea id="iCmt" rows="2" maxlength="2000" placeholder="Escribe un comentario. Con @ avisas a alguien del equipo." style="width:100%"></textarea>
+        </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="iCmtSend">Comentar</button><span class="who" id="iCmtMsg"></span></div>
       </div>
     </div>
@@ -723,16 +725,39 @@ function cmtNode(c){
   const names = teamEmails().flatMap(em=>[nameOf(em), em.split("@")[0]]).filter(Boolean).sort((a,b)=>b.length-a.length);
   const re = names.length ? new RegExp("(@(?:" + names.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|") + "))","gi") : null;
   const isTag = part => part.startsWith("@") && names.some(n=>part.toLowerCase()==="@"+n.toLowerCase());
-  for(const part of re ? c.text.split(re) : [c.text]) box.append(isTag(part) ? el("span",{class:"at",text:part}) : document.createTextNode(part));
+  for(const part of re ? c.text.split(re) : [c.text]) isTag(part) ? box.append(el("span",{class:"at",text:part})) : linkify(box, part);
   return box;
+}
+function linkify(node, text){
+  for(const part of text.split(/(https?:\/\/\S+)/)) node.append(/^https?:\/\//.test(part) ? el("a",{href:part,target:"_blank",rel:"noopener",text:part}) : document.createTextNode(part));
 }
 function renderCmts(){
   const box = $("#iCmts"); box.replaceChildren();
   if(!A?.existing){ box.append(el("span",{class:"who",text:"Guarda la entrada para poder comentar."})); $("#iCmt").disabled = true; $("#iCmtSend").disabled = true; return; }
   $("#iCmtSend").disabled = false; if(S.canWrite!==false && !S.readOnly) $("#iCmt").disabled = false;
   const list = S.comments.filter(c=>c.item===A.id).sort((a,b)=>a.at.localeCompare(b.at));
-  if(!list.length) box.append(el("span",{class:"who",text:"Sin comentarios."}));
+  // Las notas antiguas (enlaces de «Pegar lista», «Pedido a…») se enseñan como primer comentario
+  const notes = $("#iNotes").value.trim();
+  if(notes && !list.some(c=>c.text===notes)){ const n = el("div",{class:"cmt"}, el("b",{text:"Nota"}), el("br")); linkify(n, notes); box.append(n); }
+  if(!list.length && !notes) box.append(el("span",{class:"who",text:"Sin comentarios."}));
   for(const c of list) box.append(cmtNode(c));
+}
+// Las notas pasan a ser comentarios (también las que crean «Pegar lista» y «Pedir al artista»).
+// El id fijo evita duplicados si dos personas lo hacen a la vez.
+let migrating = false;
+async function migrateNotes(){
+  if(migrating || !S.loaded.items || !S.loaded.cmts || S.canWrite===false || S.readOnly) return;
+  const todo = S.items.filter(i=>(i.notes||"").trim());
+  if(!todo.length) return;
+  migrating = true;
+  try{
+    for(const it of todo){
+      const txt = it.notes.trim(), id = "nota-" + it.id + "-" + [...txt].reduce((h,c)=>(h*31 + c.codePointAt(0))>>>0, 7).toString(36);
+      if(!S.comments.some(c=>c.id===id)) await S.db.collection("comments").doc(id).set({item:it.id, by:it.updatedBy||S.uid, text:txt, at:it.updatedAt||new Date().toISOString(), mentions:[]});
+      await S.db.collection("items").doc(it.id).update({notes:""});
+    }
+  }catch(e){ console.warn("Notas:", e); }
+  finally{ migrating = false; }
 }
 // Sugerencias al escribir @
 let suggIdx = 0;
@@ -1289,8 +1314,8 @@ render();
     loadTeam();
     S.db.collection("people").onSnapshot(s=>{ S.people = Object.fromEntries(s.docs.map(d=>[d.id, d.data()])); render(); }, ()=>{});
     S.db.collection("requests").onSnapshot(s=>{ S.requests = toList(s); render(); }, ()=>{});
-    S.db.collection("items").onSnapshot(s=>{ S.items = toList(s); S.loaded.items = true; render(); openFromLink(); }, ()=>{ S.loaded.items = true; render(); });
-    S.db.collection("comments").onSnapshot(s=>{ S.comments = toList(s); render(); if($("#dlgItem").open && A) renderCmts(); }, ()=>{});
+    S.db.collection("items").onSnapshot(s=>{ S.items = toList(s); S.loaded.items = true; render(); openFromLink(); migrateNotes(); }, ()=>{ S.loaded.items = true; render(); });
+    S.db.collection("comments").onSnapshot(s=>{ S.comments = toList(s); S.loaded.cmts = true; render(); if($("#dlgItem").open && A) renderCmts(); migrateNotes(); }, ()=>{});
     S.db.collection("notifs").onSnapshot(s=>{ S.notifs = toList(s); renderBell(); }, ()=>{});
   };
   if(fromRecovery){ S.recovery = true; }
