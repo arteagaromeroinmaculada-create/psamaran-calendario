@@ -138,7 +138,7 @@ dialog::backdrop{background:rgba(10,8,14,.55)}
 dialog form{padding:20px;display:flex;flex-direction:column;gap:12px}
 dialog h2{font-family:var(--display);font-size:28px;text-transform:uppercase;margin:0}
 .fld{display:flex;flex-direction:column;gap:4px;min-width:0}
-.fld span{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.fld>span{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .fld input,.fld select,.fld textarea{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;width:100%}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .two>*{min-width:0}
@@ -159,6 +159,23 @@ dialog h2{font-family:var(--display);font-size:28px;text-transform:uppercase;mar
 .att a:hover{text-decoration:underline}
 .att small{display:block;color:var(--muted);font-size:12px}
 .err{color:var(--s-bloq);font-size:13px}
+/* Comentarios y avisos */
+.cmts{display:flex;flex-direction:column;gap:8px}
+.cmt{border-left:3px solid var(--line);padding:2px 0 2px 10px;font-size:14px;overflow-wrap:anywhere;white-space:pre-wrap}
+.cmt b{font-size:13px}
+.cmt small{color:var(--muted);font-size:12px;margin-left:6px}
+.cmt .at{color:var(--accent);font-weight:700}
+.cmtbox{position:relative;display:flex;flex-direction:column;gap:6px}
+.sugg{position:absolute;left:0;right:0;top:100%;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12);display:flex;flex-direction:column;max-height:200px;overflow:auto}
+.sugg button{border:0;background:none;text-align:left;padding:8px 10px;cursor:pointer;font:inherit}
+.sugg button:hover,.sugg button.on{background:var(--sunk)}
+.bell{position:relative;border:1px solid var(--line)!important;border-radius:999px;padding:4px 10px!important;text-decoration:none!important;color:var(--ink)!important;background:var(--surface)!important;cursor:pointer}
+.bell .n{background:var(--accent);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:1px 6px;margin-left:4px}
+#notifPanel{position:absolute;right:16px;top:64px;z-index:20;width:min(380px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.15);padding:10px;display:flex;flex-direction:column;gap:4px;max-height:70vh;overflow:auto}
+#notifPanel .nf{border:0;background:none;text-align:left;padding:8px;border-radius:8px;cursor:pointer;font:inherit;font-size:14px;color:var(--ink)}
+#notifPanel .nf:hover{background:var(--sunk)}
+#notifPanel .nf.unread{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+#notifPanel .nf small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 /* Pedir al artista */
 #dlgReq{width:min(760px,calc(100vw - 24px))}
 .reqgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
@@ -205,6 +222,7 @@ img{max-width:100%}
   <section class="summary" data-auth id="summary" aria-label="Resumen"></section>
 
   <div id="notice"></div>
+  <div id="notifPanel" hidden></div>
 
   <div class="bar" data-auth>
     <div class="tabs" role="tablist">
@@ -256,6 +274,14 @@ img{max-width:100%}
         <label class="btn" id="iAttBtn" for="iFile" style="cursor:pointer">Adjuntar archivos o fotos</label>
         <input type="file" id="iFile" multiple hidden>
         <span class="who" id="iAttMsg"></span>
+      </div>
+    </div>
+    <div class="fld" id="iCmtFld"><span>Comentarios</span>
+      <div class="cmts" id="iCmts"></div>
+      <div class="cmtbox">
+        <textarea id="iCmt" rows="2" maxlength="2000" placeholder="Escribe un comentario. Con @ avisas a alguien del equipo."></textarea>
+        <div class="sugg" id="iSugg" hidden></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="iCmtSend">Comentar</button><span class="who" id="iCmtMsg"></span></div>
       </div>
     </div>
     <div class="who" id="iWho"></div>
@@ -488,7 +514,8 @@ function rowFor(e){
         (!e.isFn && e.show==="general") ? el("span",{text:"General"}) : null,
         (!e.isFn && e.owner) ? el("span",{text:"Quién: "+ownerLabel(e.owner)}) : null,
         e.notes ? el("span",{text:"· notas"}) : null,
-        e.attachments?.length ? el("span",{text:`· ${e.attachments.length} adjunto${e.attachments.length>1?"s":""}`}) : null)),
+        e.attachments?.length ? el("span",{text:`· ${e.attachments.length} adjunto${e.attachments.length>1?"s":""}`}) : null,
+        cmtCount(e.id) ? el("span",{text:`· ${cmtCount(e.id)} comentario${cmtCount(e.id)>1?"s":""}`}) : null)),
     e.isFn ? el("span",{class:"tag-fn",text:"Función"})
       : el("button",{class:`status ${e.status}`,type:"button",style:`--sc:var(${st.c})`,disabled:!writable,title:writable?"Cambiar estado":null,"aria-label":`Estado: ${st.label}. Cambiar`,onclick:()=>cycleStatus(e)}, st.label)
   );
@@ -612,6 +639,9 @@ async function openItem(e){
   A = {id: e?.id || crypto.randomUUID(), atts: [...(e?.attachments||[])], uploadedNew: [], existing: !!e};
   $("#iAttBtn").hidden = !writable; $("#iAttMsg").textContent = "";
   renderAtts(writable);
+  $("#iCmt").value = ""; $("#iCmtMsg").textContent = ""; $("#iSugg").hidden = true;
+  $("#iCmt").disabled = !writable; $("#iCmtSend").hidden = !writable;
+  renderCmts();
   $("#dlgItem").showModal();
   // Solo el nombre puesto en Equipo, nunca el email
   const n = e?.updatedBy && (S.people[e.updatedBy]?.name||"").trim();
@@ -644,7 +674,7 @@ $("#iDup").onclick = async ()=>{
   $("#iTitle").value = $("#iTitle").value.trim() + " (copia)";
   $("#iStatus").value = "pendiente";
   $("#iDel").hidden = true; $("#iDup").hidden = true; $("#iWho").textContent = ""; $("#iErr").hidden = true;
-  renderAtts(true);
+  renderAtts(true); renderCmts();
   const msg = $("#iAttMsg");
   msg.textContent = "Cambia lo que quieras y pulsa «Guardar».";
   $("#iDate").focus();
@@ -668,9 +698,116 @@ $("#iDel").onclick = async ()=>{
     await S.db.collection("items").doc(S.editing.id).delete();
     const paths = (S.editing.attachments||[]).map(a=>a.path);
     if(paths.length) SB.storage.from(BUCKET).remove(paths).catch(()=>{});
+    for(const c of S.comments.filter(c=>c.item===S.editing.id)) S.db.collection("comments").doc(c.id).delete().catch(()=>{});
     $("#dlgItem").close();
   }catch(err){ onWriteError(err, $("#iErr")); }
 };
+
+// ---------- Comentarios con @menciones y avisos ----------
+S.comments = []; S.notifs = [];
+const cmtCount = id => S.comments.filter(c=>c.item===id).length;
+const fmtWhen = x => { const d = new Date(x); return `${fmtDay(iso(d))}, ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
+const teamEmails = () => (S.team||[]).map(m=>m.email.toLowerCase());
+// Quién sale mencionado: @Nombre (el de Equipo) o @inicio-del-email
+function mentionsIn(text){
+  const t = text.toLowerCase(), out = new Set();
+  for(const em of teamEmails()){
+    const keys = [nameOf(em).toLowerCase(), em.split("@")[0]];
+    if(keys.some(k=>k && t.includes("@"+k))) out.add(em);
+  }
+  return [...out];
+}
+function cmtNode(c){
+  const box = el("div",{class:"cmt"}, el("b",{text:nameOf(c.by)}), el("small",{text:fmtWhen(c.at)}), el("br"));
+  // Resalta las menciones
+  const names = teamEmails().flatMap(em=>[nameOf(em), em.split("@")[0]]).filter(Boolean).sort((a,b)=>b.length-a.length);
+  const re = names.length ? new RegExp("(@(?:" + names.map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|") + "))","gi") : null;
+  const isTag = part => part.startsWith("@") && names.some(n=>part.toLowerCase()==="@"+n.toLowerCase());
+  for(const part of re ? c.text.split(re) : [c.text]) box.append(isTag(part) ? el("span",{class:"at",text:part}) : document.createTextNode(part));
+  return box;
+}
+function renderCmts(){
+  const box = $("#iCmts"); box.replaceChildren();
+  if(!A?.existing){ box.append(el("span",{class:"who",text:"Guarda la entrada para poder comentar."})); $("#iCmt").disabled = true; $("#iCmtSend").disabled = true; return; }
+  $("#iCmtSend").disabled = false; if(S.canWrite!==false && !S.readOnly) $("#iCmt").disabled = false;
+  const list = S.comments.filter(c=>c.item===A.id).sort((a,b)=>a.at.localeCompare(b.at));
+  if(!list.length) box.append(el("span",{class:"who",text:"Sin comentarios."}));
+  for(const c of list) box.append(cmtNode(c));
+}
+// Sugerencias al escribir @
+let suggIdx = 0;
+function mentionQuery(){
+  const ta = $("#iCmt"), before = ta.value.slice(0, ta.selectionStart);
+  const m = before.match(/(^|\s)@([^\s@]*)$/);
+  return m ? {q:m[2].toLowerCase(), start:before.length - m[2].length - 1} : null;
+}
+function showSugg(){
+  const box = $("#iSugg"), mq = mentionQuery();
+  const opts = mq ? teamEmails().filter(em=>em!==String(S.uid).toLowerCase()).map(em=>({em, name:nameOf(em)})).filter(o=>o.name.toLowerCase().startsWith(mq.q) || o.em.startsWith(mq.q)) : [];
+  box.replaceChildren(...opts.map((o,i)=>el("button",{type:"button",class:i===suggIdx?"on":"",onmousedown:ev=>{ ev.preventDefault(); pickSugg(o); }}, "@"+o.name)));
+  box.hidden = !opts.length; box._opts = opts;
+}
+function pickSugg(o){
+  const ta = $("#iCmt"), mq = mentionQuery(); if(!mq) return;
+  const tag = "@" + o.name + " ";
+  ta.value = ta.value.slice(0, mq.start) + tag + ta.value.slice(ta.selectionStart);
+  const pos = mq.start + tag.length; ta.setSelectionRange(pos, pos); ta.focus();
+  $("#iSugg").hidden = true;
+}
+$("#iCmt").addEventListener("input", ()=>{ suggIdx = 0; showSugg(); });
+$("#iCmt").addEventListener("blur", ()=>{ $("#iSugg").hidden = true; });
+$("#iCmt").addEventListener("keydown", ev=>{
+  const box = $("#iSugg");
+  if(!box.hidden && box._opts?.length){
+    if(ev.key==="ArrowDown"||ev.key==="ArrowUp"){ ev.preventDefault(); suggIdx = (suggIdx + (ev.key==="ArrowDown"?1:-1) + box._opts.length) % box._opts.length; showSugg(); return; }
+    if(ev.key==="Enter"||ev.key==="Tab"){ ev.preventDefault(); pickSugg(box._opts[suggIdx]); return; }
+    if(ev.key==="Escape"){ ev.preventDefault(); box.hidden = true; return; }
+  }
+  if(ev.key==="Enter" && (ev.metaKey||ev.ctrlKey)){ ev.preventDefault(); $("#iCmtSend").click(); }
+});
+$("#iCmtSend").onclick = async ()=>{
+  const text = $("#iCmt").value.trim(); if(!text || !A?.existing) return;
+  const msg = $("#iCmtMsg"), btn = $("#iCmtSend"); btn.disabled = true; msg.textContent = "Enviando…";
+  const me = String(S.uid).toLowerCase(), at = new Date().toISOString();
+  const to = mentionsIn(text).filter(em=>em!==me);
+  const item = S.items.find(i=>i.id===A.id) || {title:$("#iTitle").value};
+  try{
+    await S.db.collection("comments").add({item:A.id, by:S.uid, text, at, mentions:to});
+    for(const em of to) await S.db.collection("notifs").add({to:em, by:S.uid, item:A.id, title:item.title||"", text, at, read:false});
+    $("#iCmt").value = ""; renderCmts();
+    msg.textContent = to.length ? `Avisado: ${to.map(nameOf).join(", ")}.` : "";
+    if(to.length) sendMail(to, item.title||"", text).then(ok=>{ if(!ok) msg.textContent += " El email no se ha podido enviar (sí está el aviso en la app)."; });
+  }catch(err){ msg.textContent = ""; onWriteError(err, $("#iErr")); }
+  finally{ btn.disabled = false; }
+};
+async function sendMail(to, title, text){
+  try{
+    const {data:{session}} = await SB.auth.getSession();
+    const r = await fetch("/api/notify", {method:"POST", headers:{"Content-Type":"application/json", Authorization:"Bearer "+session.access_token},
+      body: JSON.stringify({to, fromName:nameOf(S.uid), title, text, item:A.id})});
+    return r.ok;
+  }catch(e){ return false; }
+}
+// Campana: avisos para mí
+const myNotifs = () => S.notifs.filter(n=>n.to===String(S.uid).toLowerCase()).sort((a,b)=>b.at.localeCompare(a.at));
+function renderBell(){
+  const b = $("#bell"); if(!b) return;
+  const n = myNotifs().filter(x=>!x.read).length;
+  b.replaceChildren(...["Avisos", n ? el("span",{class:"n",text:String(n)}) : null].filter(Boolean));
+  if(!$("#notifPanel").hidden) renderNotifPanel();
+}
+function renderNotifPanel(){
+  const p = $("#notifPanel"), list = myNotifs().slice(0,30);
+  p.replaceChildren(el("div",{style:"display:flex;justify-content:space-between;align-items:center;padding:2px 6px 6px"}, el("b",{text:"Avisos"}),
+    list.some(x=>!x.read) ? el("button",{type:"button",class:"btn",style:"padding:4px 10px;font-size:12px",onclick:async()=>{ for(const x of myNotifs().filter(x=>!x.read)) await S.db.collection("notifs").doc(x.id).update({read:true}).catch(()=>{}); }},"Marcar todo leído") : null));
+  if(!list.length) p.append(el("span",{class:"who",style:"padding:6px",text:"No tienes avisos."}));
+  for(const x of list) p.append(el("button",{type:"button",class:"nf"+(x.read?"":" unread"),onclick:async()=>{
+    p.hidden = true;
+    if(!x.read) S.db.collection("notifs").doc(x.id).update({read:true}).catch(()=>{});
+    const it = S.items.find(i=>i.id===x.item); if(it) openItem(it);
+  }}, el("div",{}, el("b",{text:nameOf(x.by)}), ` te ha mencionado en «${x.title}»`), el("small",{text:`${x.text.slice(0,140)}${x.text.length>140?"…":""} · ${fmtWhen(x.at)}`})));
+}
+document.addEventListener("click", ev=>{ const p = $("#notifPanel"); if(!p.hidden && !p.contains(ev.target) && ev.target.id!=="bell" && !ev.target.closest?.("#bell")) p.hidden = true; });
 
 // ---------- Adjuntos (Supabase Storage, calidad original) ----------
 const BUCKET = "adjuntos";
@@ -1118,6 +1255,15 @@ function makeDb(sb){
   })};
 }
 
+// Enlace de los emails: #item=<id> abre esa entrada
+let linkItem = (location.hash.match(/item=([^&]+)/)||[])[1];
+function openFromLink(){
+  if(!linkItem) return;
+  const it = S.items.find(i=>i.id===decodeURIComponent(linkItem)); linkItem = null;
+  history.replaceState(null, "", location.pathname);
+  if(it) openItem(it);
+}
+
 // ---------- Arranque ----------
 render();
 (async ()=>{
@@ -1133,14 +1279,16 @@ render();
     const email = session.user.email;
     S.db = makeDb(SB); S.uid = email; S.canWrite = null;
     S.user = { profiles: async ids => Object.fromEntries([].concat(ids).map(i=>[i,{name:i}])) };
-    const box = $("#me"); box.replaceChildren(el("span",{text:email}), el("button",{type:"button",onclick:()=>{ S.recovery = true; render(); }},"Cambiar contraseña"), el("button",{type:"button",onclick:async()=>{ await SB.auth.signOut(); location.reload(); }},"Salir")); box.hidden = false;
+    const box = $("#me"); box.replaceChildren(el("button",{type:"button",class:"bell",id:"bell",onclick:()=>{ const p = $("#notifPanel"); p.hidden = !p.hidden; if(!p.hidden) renderNotifPanel(); }},"Avisos"), el("span",{text:email}), el("button",{type:"button",onclick:()=>{ S.recovery = true; render(); }},"Cambiar contraseña"), el("button",{type:"button",onclick:async()=>{ await SB.auth.signOut(); location.reload(); }},"Salir")); box.hidden = false;
     render();
     const toList = snap => snap.docs.map(d=>({id:d.id, ...d.data()}));
     S.db.collection("shows").onSnapshot(s=>{ S.shows = toList(s); S.loaded.shows = true; render(); }, ()=>{ S.loaded.shows = true; render(); });
     loadTeam();
     S.db.collection("people").onSnapshot(s=>{ S.people = Object.fromEntries(s.docs.map(d=>[d.id, d.data()])); render(); }, ()=>{});
     S.db.collection("requests").onSnapshot(s=>{ S.requests = toList(s); render(); }, ()=>{});
-    S.db.collection("items").onSnapshot(s=>{ S.items = toList(s); S.loaded.items = true; render(); }, ()=>{ S.loaded.items = true; render(); });
+    S.db.collection("items").onSnapshot(s=>{ S.items = toList(s); S.loaded.items = true; render(); openFromLink(); }, ()=>{ S.loaded.items = true; render(); });
+    S.db.collection("comments").onSnapshot(s=>{ S.comments = toList(s); render(); if($("#dlgItem").open && A) renderCmts(); }, ()=>{});
+    S.db.collection("notifs").onSnapshot(s=>{ S.notifs = toList(s); renderBell(); }, ()=>{});
   };
   if(fromRecovery){ S.recovery = true; }
   SB.auth.onAuthStateChange((e, s)=>{ if(e==="PASSWORD_RECOVERY"){ S.recovery = true; render(); } start(s); });

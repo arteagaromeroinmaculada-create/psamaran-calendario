@@ -45,4 +45,15 @@ Todo vive en la tabla `docs` (`collection`, `id`, `data`):
 - `requests`: lo pedido a cada artista desde «Pedir al artista».
 - `people`: nombre visible de cada persona del equipo (id = email).
 
+- `comments`: comentarios de cada entrada (item, by, text, at, mentions).
+- `notifs`: avisos de @menciones (to, by, item, title, text, at, read).
+
 Los adjuntos de las tareas se guardan a calidad original en el bucket privado `adjuntos` de Supabase Storage (máx. 50 MB por archivo), en `items/<id de la tarea>/`.
+
+## Avisos por email de las @menciones
+
+Al mencionar a alguien con @ en un comentario, le sale un aviso en «Avisos» y le llega un email. El email lo envía `api/notify.js` (función de Vercel) con Gmail. Hay que poner en **Vercel > Settings > Environment Variables**:
+- `SMTP_USER`: el Gmail que envía (por ejemplo psamaranmarketing@gmail.com).
+- `SMTP_PASS`: una contraseña de aplicación de ese Gmail.
+
+Después, **Deployments > Redeploy**. Sin estas variables los avisos siguen saliendo en la app, pero no por email.

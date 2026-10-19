@@ -1,0 +1,2 @@
+// Clave pública (anon) de Supabase, la misma de config.js
+module.exports = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmcmN3aGN6cGRhZHd3aWJkZ3hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NzU1OTAsImV4cCI6MjEwNzU1MTU5MH0.j1uHoSAFYRpQHBUQYOCe9fHQ_JGPBiAg4N_uy2VnBmQ";
