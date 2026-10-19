@@ -901,7 +901,16 @@ $("#formShow").addEventListener("submit", async ev=>{
     venue:$("#sVenue").value.trim(), venueIg:$("#sVenueIg").value.trim(), audience:$("#sAud").value, notes:$("#sNotes").value.trim(), updatedBy:S.uid, updatedAt:new Date().toISOString() };
   if(!body.name) return;
   try{
-    if(S.editingShow) await S.db.collection("shows").doc(S.editingShow.id).set(body);
+    if(S.editingShow){
+      const old = S.editingShow;
+      await S.db.collection("shows").doc(old.id).set({...body, promoCreated: old.promoCreated || false});
+      // Si cambia la fecha, todo lo de ese espectáculo que no esté hecho se mueve los mismos días
+      if(old.date && body.date && old.date!==body.date){
+        const delta = Math.round((parse(body.date) - parse(old.date)) / 864e5);
+        for(const it of S.items.filter(i=>i.show===old.id && i.status!=="hecho" && i.date))
+          await S.db.collection("items").doc(it.id).update({date:addDays(it.date, delta)});
+      }
+    }
     else await S.db.collection("shows").add(body);
     $("#dlgShow").close();
   }catch(err){ onWriteError(err, $("#sErr")); }
@@ -950,6 +959,35 @@ const addDays = (s,n) => { const d = parse(s); d.setDate(d.getDate()+n); return 
 const maxIso = (a,b) => a>b ? a : b;
 let R = null;
 
+// Promo que el artista hace en cada espectáculo: se apunta sola en el calendario (ids fijos, sin duplicados)
+const PROMO = [
+  {k:"rec", type:"material", title:"Recibir los 3 reels grabados (para anuncios)"},
+  {k:"r1", type:"publicacion", off:-16, title:"Reel 1 · Invitación: a cámara, qué es, fecha, hora y sala (+ stories con enlace)"},
+  {k:"r2", type:"publicacion", off:-7, title:"Reel 2 · Fragmento del espectáculo que enganche (+ stories con enlace)"},
+  {k:"r3", type:"publicacion", off:-2, title:"Reel 3 · Cuenta atrás: «Esta semana nos vemos en Pozuelo» (+ stories con enlace)"},
+];
+const promoId = (s,k) => `promo-${s.id}-${k}`;
+const promoDate = (s,pr) => pr.k==="rec" ? recDeadline(s) : maxIso(todayIso(), addDays(s.date, pr.off));
+const promoEntries = s => PROMO.map(pr=>({id:promoId(s,pr.k), type:pr.type, date:promoDate(s,pr), title:`${s.artist||s.name} · ${pr.title}`}));
+// Espectáculos con fecha futura que aún no tienen su promo: se crea una vez (si alguien borra una, no vuelve)
+let promoBusy = false;
+async function ensurePromos(){
+  if(promoBusy || !S.loaded.items || !S.loaded.shows || S.canWrite===false || S.readOnly) return;
+  const t = todayIso();
+  const todo = S.shows.filter(s=>s.date && s.date>=t && !s.promoCreated);
+  if(!todo.length) return;
+  promoBusy = true;
+  try{
+    for(const s of todo){
+      // Si ya se pidió con «Pedir al artista» antes de esto, no se duplica
+      const old = S.items.some(i=>i.show===s.id && /Vídeo [123],/.test(i.title||""));
+      if(!old) for(const e of promoEntries(s)) if(!S.items.some(i=>i.id===e.id))
+        await S.db.collection("items").doc(e.id).set({type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente", owner:"", notes:"", updatedBy:S.uid, updatedAt:new Date().toISOString()});
+      await S.db.collection("shows").doc(s.id).update({promoCreated:true});
+    }
+  }catch(e){ console.warn("Promo:", e); }
+  finally{ promoBusy = false; }
+}
 // Los 3 vídeos se graban antes: plazo de entrega unos días antes del primer reel
 function recDeadline(s){
   const t = todayIso(), min = addDays(t,2);
@@ -961,11 +999,13 @@ function reqPlan(){
   const picked = ASKS.filter(a=>R.picked.has(a.k));
   const entries = [];
   for(const a of picked){
+    if(a.k==="stories" && R.picked.has("reels")) continue; // las stories van con cada reel
+    if(a.k==="reels" && s.date){ for(const e of promoEntries(s)) if(!S.items.some(i=>i.id===e.id)) entries.push({...e, ask:a}); continue; }
     if(a.soon) entries.push({ask:a, type:a.type, date:soon, title:`${s.artist||name} · ${a.label}`});
     else if(s.date) for(const [off,lbl] of a.off) entries.push({ask:a, type:a.type, date:maxIso(t, addDays(s.date,off)), title:`${s.artist||name} · ${lbl}`});
     else entries.push({ask:a, type:a.type, date:soon, title:`${s.artist||name} · ${a.label}`, nodate:true});
   }
-  if(R.picked.has("reels")) entries.push({type:"material", date:recDeadline(s), title:`${s.artist||name} · Recibir los 3 vídeos grabados (para anuncios)`});
+  if(R.picked.has("reels") && !s.date) entries.push({type:"material", date:recDeadline(s), title:`${s.artist||name} · Recibir los 3 reels grabados (para anuncios)`});
   const follow = [];
   if(picked.length) follow.push({type:"tarea", date:addDays(t,2), title:`Seguimiento: ¿ha contestado ${name}?`});
   if(picked.some(a=>a.soon)) follow.push({type:"tarea", date:soon, title:`Comprobar que ha llegado lo pedido a ${name}`});
@@ -1073,10 +1113,12 @@ $("#formReq").addEventListener("submit", async ev=>{
     const ids = [];
     for(const e of [...p.entries, ...p.follow]){
       const isFollow = !e.ask;
-      const ref = await S.db.collection("items").add({ type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente",
+      const body = { type:e.type, title:e.title, show:s.id, date:e.date, time:"", status:"pendiente",
         owner: isFollow ? (S.uid||"") : "", notes: `Pedido a ${p.name} el ${fmtDay(t)}.` + (e.nodate ? " Fecha provisional: el espectáculo no tiene fecha." : ""),
-        updatedBy:S.uid, updatedAt:now });
-      ids.push(ref.id);
+        updatedBy:S.uid, updatedAt:now };
+      const ref = e.id ? S.db.collection("items").doc(e.id) : null;
+      if(ref) await ref.set(body); else ids.push((await S.db.collection("items").add(body)).id);
+      if(ref) ids.push(ref.id);
     }
     await S.db.collection("requests").add({ show:s.id, contact:p.name, role:R.role, asks:[...R.picked], link:$("#rLink").value.trim(), sentOn:t, items:ids, createdBy:S.uid });
     $("#dlgReq").close();
@@ -1310,11 +1352,11 @@ render();
     const box = $("#me"); box.replaceChildren(el("button",{type:"button",class:"bell",id:"bell",onclick:()=>{ const p = $("#notifPanel"); p.hidden = !p.hidden; if(!p.hidden) renderNotifPanel(); }},"Avisos"), el("span",{text:email}), el("button",{type:"button",onclick:()=>{ S.recovery = true; render(); }},"Cambiar contraseña"), el("button",{type:"button",onclick:async()=>{ await SB.auth.signOut(); location.reload(); }},"Salir")); box.hidden = false;
     render();
     const toList = snap => snap.docs.map(d=>({id:d.id, ...d.data()}));
-    S.db.collection("shows").onSnapshot(s=>{ S.shows = toList(s); S.loaded.shows = true; render(); }, ()=>{ S.loaded.shows = true; render(); });
+    S.db.collection("shows").onSnapshot(s=>{ S.shows = toList(s); S.loaded.shows = true; render(); ensurePromos(); }, ()=>{ S.loaded.shows = true; render(); });
     loadTeam();
     S.db.collection("people").onSnapshot(s=>{ S.people = Object.fromEntries(s.docs.map(d=>[d.id, d.data()])); render(); }, ()=>{});
     S.db.collection("requests").onSnapshot(s=>{ S.requests = toList(s); render(); }, ()=>{});
-    S.db.collection("items").onSnapshot(s=>{ S.items = toList(s); S.loaded.items = true; render(); openFromLink(); migrateNotes(); }, ()=>{ S.loaded.items = true; render(); });
+    S.db.collection("items").onSnapshot(s=>{ S.items = toList(s); S.loaded.items = true; render(); openFromLink(); migrateNotes(); ensurePromos(); }, ()=>{ S.loaded.items = true; render(); });
     S.db.collection("comments").onSnapshot(s=>{ S.comments = toList(s); S.loaded.cmts = true; render(); if($("#dlgItem").open && A) renderCmts(); migrateNotes(); }, ()=>{});
     S.db.collection("notifs").onSnapshot(s=>{ S.notifs = toList(s); renderBell(); }, ()=>{});
   };
